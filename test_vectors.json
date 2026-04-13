@@ -1,0 +1,15 @@
+{
+  "algorithm": {
+    "keyDerivation": "SHA256(appSecret + nonce)",
+    "signature": "HMAC-SHA256(raw_base64_payload_string, derivedKey)"
+  },
+  "inputs": {
+    "appSecret": "af_test_secret_2026_reference",
+    "nonce": "0123456789abcdeffedcba9876543210",
+    "payload": "eyJzZXNzaW9uVG9rZW4iOiJleUpoY0hCSlpDSTZJblJsYzNRdFlYQndJaXdpYkdsalpXNXpaVXRsZVNJNkluUmxjM1F0YTJWNUlpd2lhSGRwWkNJNkluUmxjM1JvZDJsa0lpd2lZWEJ3VTJWamNtVjBJam9pWVdaZmRHVnpkRjl6WldOeVpYUmZNakF5Tmw5eVpXWmxjbVZ1WTJVaUxDSmxlSEJwY21WelNXNGlPakUzTkRBME16TXlNREI5LkhQSFRHMlExN0sxeWRJd1ZuSGhvWlBONTlNQXBFbmNIUEdRaWVzR0JxYzAiLCJ0aW1lc3RhbXAiOjE3NDA0Mjk2MDAsImV4cGlyZXNJbiI6MTc0MDQzMzIwMCwibm9uY2UiOiIwMTIzNDU2Nzg5YWJjZGVmZmVkY2JhOTg3NjU0MzIxMCJ9"
+  },
+  "outputs": {
+    "derivedKeyHex": "531b682c6c910b5f0978522f398f92dbdfd7fedc123a2a11ba92b84229f36080",
+    "signatureHex": "95d9229ccc231f60b81d81cf2e43894c5ebcfef874950d7a115bb423211f34a6"
+  }
+}
