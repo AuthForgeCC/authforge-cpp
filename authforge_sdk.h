@@ -5,6 +5,7 @@
 #include <functional>
 #include <mutex>
 #include <optional>
+#include <unordered_set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -25,6 +26,11 @@ public:
       int requestTimeout = 15);
 
   bool Login(const std::string &licenseKey);
+  void Logout();
+  bool IsAuthenticated() const;
+  std::optional<std::string> GetSessionDataJson() const;
+  std::optional<std::string> GetAppVariablesJson() const;
+  std::optional<std::string> GetLicenseVariablesJson() const;
 
 private:
   struct JsonValue {
@@ -40,7 +46,8 @@ private:
   void ValidateAndStore(const std::string &licenseKey);
   void ApplySignedResponse(const std::string &responseJson, const std::string &expectedNonce, const std::optional<std::string> &licenseKey);
 
-  std::string PostJson(const std::string &path, const std::string &bodyJson) const;
+  std::string PostJson(const std::string &path, const std::string &bodyJson, std::string *usedNonce = nullptr) const;
+  std::string ExtractServerError(const std::string &responseJson) const;
   void Fail(const std::string &reason, const std::exception *exc = nullptr) const noexcept;
 
   std::string GetHwid() const;
@@ -88,7 +95,28 @@ private:
   std::string rawPayloadB64_;
   std::string signature_;
   std::vector<unsigned char> derivedKey_;
+  std::string sessionDataJson_;
+  std::string appVariablesJson_;
+  std::string licenseVariablesJson_;
+  bool authenticated_ = false;
+  bool heartbeatStop_ = false;
   std::string hwid_;
+  std::unordered_set<std::string> knownServerErrors_ = {
+      "invalid_app",
+      "invalid_key",
+      "expired",
+      "revoked",
+      "hwid_mismatch",
+      "no_credits",
+      "blocked",
+      "rate_limited",
+      "replay_detected",
+      "app_disabled",
+      "session_expired",
+      "bad_request",
+      "checksum_required",
+      "checksum_mismatch",
+  };
 };
 
 } // namespace authforge
