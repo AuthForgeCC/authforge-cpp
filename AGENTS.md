@@ -75,7 +75,7 @@ int main() {
 
 ## Error codes the server can return
 
-invalid_app, invalid_key, expired, revoked, hwid_mismatch, no_credits, blocked, rate_limited, replay_detected, checksum_required, checksum_mismatch, session_expired, app_disabled
+invalid_app, invalid_key, expired, revoked, hwid_mismatch, no_credits, blocked, rate_limited, replay_detected, session_expired, app_disabled, bad_request
 
 ## Common patterns
 
