@@ -39,12 +39,14 @@ private:
     std::string value;
   };
 
+  enum class SigningContext { Validate, Heartbeat };
+
   void StartHeartbeatOnce();
   void HeartbeatLoop() noexcept;
   void ServerHeartbeat();
   void LocalHeartbeat();
   void ValidateAndStore(const std::string &licenseKey);
-  void ApplySignedResponse(const std::string &responseJson, const std::string &expectedNonce, const std::optional<std::string> &licenseKey);
+  void ApplySignedResponse(const std::string &responseJson, const std::string &expectedNonce, const std::optional<std::string> &licenseKey, SigningContext context);
 
   std::string PostJson(const std::string &path, const std::string &bodyJson, std::string *usedNonce = nullptr) const;
   std::string ExtractServerError(const std::string &responseJson) const;
@@ -66,7 +68,9 @@ private:
   static std::string ToLower(std::string value);
 
   static std::string GenerateNonceHex32();
-  std::vector<unsigned char> DeriveKey(const std::string &nonce) const;
+  std::vector<unsigned char> DeriveValidateKey(const std::string &nonce) const;
+  std::vector<unsigned char> DeriveHeartbeatKey(const std::string &nonce) const;
+  static std::vector<unsigned char> Sha256Bytes(const std::string &input);
   static std::string HmacSha256HexLower(const std::vector<unsigned char> &key, const std::string &message);
   static std::string Sha256Hex(const std::string &input);
   static std::string BytesToHexLower(const std::vector<unsigned char> &bytes);
@@ -75,6 +79,8 @@ private:
   static std::string AddBase64Padding(const std::string &value);
   static bool IsSuccessStatus(const JsonValue &status);
   static std::optional<long long> ExtractExpiresInFromSessionToken(const std::string &sessionToken);
+  static std::optional<std::string> ExtractSigKeyFromSessionToken(const std::string &sessionToken);
+  static std::optional<std::string> DecodeSessionTokenBody(const std::string &sessionToken);
   static void VerifySignature(const std::string &rawPayloadB64, const std::vector<unsigned char> &derivedKey, const std::string &signature);
 
   std::string appId_;
@@ -95,6 +101,7 @@ private:
   std::string rawPayloadB64_;
   std::string signature_;
   std::vector<unsigned char> derivedKey_;
+  std::string sigKey_;
   std::string sessionDataJson_;
   std::string appVariablesJson_;
   std::string licenseVariablesJson_;
@@ -114,6 +121,7 @@ private:
       "app_disabled",
       "session_expired",
       "bad_request",
+      "server_error",
       "checksum_required",
       "checksum_mismatch",
   };

@@ -11,6 +11,7 @@
 namespace {
 
 constexpr const char *APP_SECRET = "af_test_secret_2026_reference";
+constexpr const char *SIG_KEY = "af_test_sig_key_2026_reference_0123456789abcdef";
 constexpr const char *NONCE = "0123456789abcdeffedcba9876543210";
 constexpr const char *SESSION_SIGNING_SECRET = "authforge-dev-session-signing-secret-rotate-before-production";
 
@@ -142,8 +143,8 @@ std::string EscapeJson(const std::string &value) {
 
 std::string BuildRealisticSessionToken() {
   const std::string bodyJson =
-      std::string("{\"appId\":\"test-app\",\"licenseKey\":\"test-key\",\"hwid\":\"testhwid\",\"appSecret\":\"") +
-      APP_SECRET +
+      std::string("{\"appId\":\"test-app\",\"licenseKey\":\"test-key\",\"hwid\":\"testhwid\",\"sigKey\":\"") +
+      SIG_KEY +
       "\",\"expiresIn\":1740433200}";
   const std::vector<unsigned char> bodyBytes(bodyJson.begin(), bodyJson.end());
   const std::string bodyB64 = Base64UrlNoPad(bodyBytes);
@@ -165,23 +166,42 @@ std::string BuildPayloadB64() {
 
 std::string BuildVectorsJson(
     const std::string &payload,
-    const std::string &derivedKeyHex,
-    const std::string &signatureHex) {
+    const std::string &validateKeyHex,
+    const std::string &validateSigHex,
+    const std::string &heartbeatKeyHex,
+    const std::string &heartbeatSigHex) {
   std::ostringstream oss;
   oss
       << "{\n"
-      << "  \"algorithm\": {\n"
-      << "    \"keyDerivation\": \"SHA256(appSecret + nonce)\",\n"
-      << "    \"signature\": \"HMAC-SHA256(raw_base64_payload_string, derivedKey)\"\n"
+      << "  \"validate\": {\n"
+      << "    \"algorithm\": {\n"
+      << "      \"keyDerivation\": \"SHA256(appSecret + nonce)\",\n"
+      << "      \"signature\": \"HMAC-SHA256(raw_base64_payload_string, derivedKey)\"\n"
+      << "    },\n"
+      << "    \"inputs\": {\n"
+      << "      \"appSecret\": \"" << APP_SECRET << "\",\n"
+      << "      \"nonce\": \"" << NONCE << "\",\n"
+      << "      \"payload\": \"" << EscapeJson(payload) << "\"\n"
+      << "    },\n"
+      << "    \"outputs\": {\n"
+      << "      \"derivedKeyHex\": \"" << validateKeyHex << "\",\n"
+      << "      \"signatureHex\": \"" << validateSigHex << "\"\n"
+      << "    }\n"
       << "  },\n"
-      << "  \"inputs\": {\n"
-      << "    \"appSecret\": \"" << APP_SECRET << "\",\n"
-      << "    \"nonce\": \"" << NONCE << "\",\n"
-      << "    \"payload\": \"" << EscapeJson(payload) << "\"\n"
-      << "  },\n"
-      << "  \"outputs\": {\n"
-      << "    \"derivedKeyHex\": \"" << derivedKeyHex << "\",\n"
-      << "    \"signatureHex\": \"" << signatureHex << "\"\n"
+      << "  \"heartbeat\": {\n"
+      << "    \"algorithm\": {\n"
+      << "      \"keyDerivation\": \"SHA256(sigKey + nonce)\",\n"
+      << "      \"signature\": \"HMAC-SHA256(raw_base64_payload_string, derivedKey)\"\n"
+      << "    },\n"
+      << "    \"inputs\": {\n"
+      << "      \"sigKey\": \"" << SIG_KEY << "\",\n"
+      << "      \"nonce\": \"" << NONCE << "\",\n"
+      << "      \"payload\": \"" << EscapeJson(payload) << "\"\n"
+      << "    },\n"
+      << "    \"outputs\": {\n"
+      << "      \"derivedKeyHex\": \"" << heartbeatKeyHex << "\",\n"
+      << "      \"signatureHex\": \"" << heartbeatSigHex << "\"\n"
+      << "    }\n"
       << "  }\n"
       << "}";
   return oss.str();
@@ -191,10 +211,19 @@ std::string BuildVectorsJson(
 
 int main() {
   const std::string payload = BuildPayloadB64();
-  const std::vector<unsigned char> derivedKey = Sha256(std::string(APP_SECRET) + NONCE);
-  const std::vector<unsigned char> signature = HmacSha256(derivedKey, payload);
 
-  const std::string vectorsJson = BuildVectorsJson(payload, HexLower(derivedKey), HexLower(signature));
+  const std::vector<unsigned char> validateKey = Sha256(std::string(APP_SECRET) + NONCE);
+  const std::vector<unsigned char> validateSig = HmacSha256(validateKey, payload);
+
+  const std::vector<unsigned char> heartbeatKey = Sha256(std::string(SIG_KEY) + NONCE);
+  const std::vector<unsigned char> heartbeatSig = HmacSha256(heartbeatKey, payload);
+
+  const std::string vectorsJson = BuildVectorsJson(
+      payload,
+      HexLower(validateKey),
+      HexLower(validateSig),
+      HexLower(heartbeatKey),
+      HexLower(heartbeatSig));
   std::ofstream out("test_vectors.json", std::ios::binary);
   if (!out.is_open()) {
     return 1;

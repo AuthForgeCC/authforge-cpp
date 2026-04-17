@@ -1,15 +1,32 @@
 {
-  "algorithm": {
-    "keyDerivation": "SHA256(appSecret + nonce)",
-    "signature": "HMAC-SHA256(raw_base64_payload_string, derivedKey)"
+  "validate": {
+    "algorithm": {
+      "keyDerivation": "SHA256(appSecret + nonce)",
+      "signature": "HMAC-SHA256(raw_base64_payload_string, derivedKey)"
+    },
+    "inputs": {
+      "appSecret": "af_test_secret_2026_reference",
+      "nonce": "0123456789abcdeffedcba9876543210",
+      "payload": "eyJzZXNzaW9uVG9rZW4iOiJleUpoY0hCSlpDSTZJblJsYzNRdFlYQndJaXdpYkdsalpXNXpaVXRsZVNJNkluUmxjM1F0YTJWNUlpd2lhSGRwWkNJNkluUmxjM1JvZDJsa0lpd2ljMmxuUzJWNUlqb2lZV1pmZEdWemRGOXphV2RmYTJWNVh6SXdNalpmY21WbVpYSmxibU5sWHpBeE1qTTBOVFkzT0RsaFltTmtaV1lpTENKbGVIQnBjbVZ6U1c0aU9qRTNOREEwTXpNeU1EQjkud1g0ZG94V3N5SUgtZ0FndGpoMTVFck8wYXNvdWtoQkNnZmpHck5ZbGlaZyIsInRpbWVzdGFtcCI6MTc0MDQyOTYwMCwiZXhwaXJlc0luIjoxNzQwNDMzMjAwLCJub25jZSI6IjAxMjM0NTY3ODlhYmNkZWZmZWRjYmE5ODc2NTQzMjEwIn0="
+    },
+    "outputs": {
+      "derivedKeyHex": "531b682c6c910b5f0978522f398f92dbdfd7fedc123a2a11ba92b84229f36080",
+      "signatureHex": "5ea7a3412bf0c778a4df76eded7ce8031bfdccfe61d9f749c66a31006af7b55a"
+    }
   },
-  "inputs": {
-    "appSecret": "af_test_secret_2026_reference",
-    "nonce": "0123456789abcdeffedcba9876543210",
-    "payload": "eyJzZXNzaW9uVG9rZW4iOiJleUpoY0hCSlpDSTZJblJsYzNRdFlYQndJaXdpYkdsalpXNXpaVXRsZVNJNkluUmxjM1F0YTJWNUlpd2lhSGRwWkNJNkluUmxjM1JvZDJsa0lpd2lZWEJ3VTJWamNtVjBJam9pWVdaZmRHVnpkRjl6WldOeVpYUmZNakF5Tmw5eVpXWmxjbVZ1WTJVaUxDSmxlSEJwY21WelNXNGlPakUzTkRBME16TXlNREI5LkhQSFRHMlExN0sxeWRJd1ZuSGhvWlBONTlNQXBFbmNIUEdRaWVzR0JxYzAiLCJ0aW1lc3RhbXAiOjE3NDA0Mjk2MDAsImV4cGlyZXNJbiI6MTc0MDQzMzIwMCwibm9uY2UiOiIwMTIzNDU2Nzg5YWJjZGVmZmVkY2JhOTg3NjU0MzIxMCJ9"
-  },
-  "outputs": {
-    "derivedKeyHex": "531b682c6c910b5f0978522f398f92dbdfd7fedc123a2a11ba92b84229f36080",
-    "signatureHex": "95d9229ccc231f60b81d81cf2e43894c5ebcfef874950d7a115bb423211f34a6"
+  "heartbeat": {
+    "algorithm": {
+      "keyDerivation": "SHA256(sigKey + nonce)",
+      "signature": "HMAC-SHA256(raw_base64_payload_string, derivedKey)"
+    },
+    "inputs": {
+      "sigKey": "af_test_sig_key_2026_reference_0123456789abcdef",
+      "nonce": "0123456789abcdeffedcba9876543210",
+      "payload": "eyJzZXNzaW9uVG9rZW4iOiJleUpoY0hCSlpDSTZJblJsYzNRdFlYQndJaXdpYkdsalpXNXpaVXRsZVNJNkluUmxjM1F0YTJWNUlpd2lhSGRwWkNJNkluUmxjM1JvZDJsa0lpd2ljMmxuUzJWNUlqb2lZV1pmZEdWemRGOXphV2RmYTJWNVh6SXdNalpmY21WbVpYSmxibU5sWHpBeE1qTTBOVFkzT0RsaFltTmtaV1lpTENKbGVIQnBjbVZ6U1c0aU9qRTNOREEwTXpNeU1EQjkud1g0ZG94V3N5SUgtZ0FndGpoMTVFck8wYXNvdWtoQkNnZmpHck5ZbGlaZyIsInRpbWVzdGFtcCI6MTc0MDQyOTYwMCwiZXhwaXJlc0luIjoxNzQwNDMzMjAwLCJub25jZSI6IjAxMjM0NTY3ODlhYmNkZWZmZWRjYmE5ODc2NTQzMjEwIn0="
+    },
+    "outputs": {
+      "derivedKeyHex": "b2f978aac13c6fa4d42120fb1e0282c854c4ec22c0eda146d788c14a16fc306e",
+      "signatureHex": "e957ba04b074b425434c5fdd3272510a1281e15ddfcb9315b68ec0c4e7b34d7a"
+    }
   }
 }

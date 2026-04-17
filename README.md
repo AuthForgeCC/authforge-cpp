@@ -110,7 +110,7 @@ authforge::AuthForgeClient client(
 
 2. **Heartbeat** — A detached background thread checks in at the configured interval. In SERVER mode, it sends a fresh nonce and verifies the response. In LOCAL mode, it re-verifies the stored signature and checks expiry without network calls.
 
-3. **Crypto** — Every response is signed with a key derived from `SHA256(appSecret + nonce)`. The signing key changes on every call, making replay and MITM attacks impractical.
+3. **Crypto** — The `/validate` response is signed with a key derived from `SHA256(appSecret + nonce)`. That response carries a per-session `sigKey` (32-byte random hex) embedded in the signed session token. Every `/heartbeat` response is then signed with a key derived from `SHA256(sigKey + nonce)`. This keeps `appSecret` out of the heartbeat path while still rotating the signing key on every nonce, making replay and MITM attacks impractical.
 
 ## Test Vectors
 

@@ -285,7 +285,7 @@ void AuthForgeClient::ServerHeartbeat() {
   });
   std::string usedNonce = nonce;
   const std::string response = PostJson("/auth/heartbeat", body, &usedNonce);
-  ApplySignedResponse(response, usedNonce, std::nullopt);
+  ApplySignedResponse(response, usedNonce, std::nullopt, SigningContext::Heartbeat);
 }
 
 void AuthForgeClient::LocalHeartbeat() {
@@ -328,13 +328,14 @@ void AuthForgeClient::ValidateAndStore(const std::string &licenseKey) {
   });
   std::string usedNonce = nonce;
   const std::string response = PostJson("/auth/validate", body, &usedNonce);
-  ApplySignedResponse(response, usedNonce, licenseKey);
+  ApplySignedResponse(response, usedNonce, licenseKey, SigningContext::Validate);
 }
 
 void AuthForgeClient::ApplySignedResponse(
     const std::string &responseJson,
     const std::string &expectedNonce,
-    const std::optional<std::string> &licenseKey) {
+    const std::optional<std::string> &licenseKey,
+    SigningContext context) {
   JsonValue status;
   ExtractJsonValue(responseJson, "status", status);
   if (!IsSuccessStatus(status)) {
@@ -384,13 +385,26 @@ void AuthForgeClient::ApplySignedResponse(
     throw std::runtime_error("nonce_mismatch");
   }
 
-  const std::vector<unsigned char> derivedKey = DeriveKey(expectedNonce);
+  std::vector<unsigned char> derivedKey;
+  switch (context) {
+  case SigningContext::Validate:
+    derivedKey = DeriveValidateKey(expectedNonce);
+    break;
+  case SigningContext::Heartbeat:
+    derivedKey = DeriveHeartbeatKey(expectedNonce);
+    break;
+  }
   VerifySignature(rawPayloadB64, derivedKey, signature);
 
   const std::optional<std::string> sessionTokenOpt = ExtractJsonString(payloadJson, "sessionToken");
   const std::string sessionToken = sessionTokenOpt.has_value() ? Trim(*sessionTokenOpt) : "";
   if (sessionToken.empty()) {
     throw std::runtime_error("missing_sessionToken");
+  }
+
+  const std::optional<std::string> newSigKey = ExtractSigKeyFromSessionToken(sessionToken);
+  if (!newSigKey.has_value() || newSigKey->empty()) {
+    throw std::runtime_error("missing_sigKey");
   }
 
   std::optional<long long> expiresIn = ExtractExpiresInFromSessionToken(sessionToken);
@@ -412,6 +426,7 @@ void AuthForgeClient::ApplySignedResponse(
     rawPayloadB64_ = rawPayloadB64;
     signature_ = signature;
     derivedKey_ = derivedKey;
+    sigKey_ = *newSigKey;
     sessionDataJson_ = payloadJson;
     appVariablesJson_.clear();
     if (const std::optional<std::string> appVars = ExtractTopLevelObject(payloadJson, "appVariables"); appVars.has_value()) {
@@ -478,7 +493,8 @@ std::string AuthForgeClient::PostJson(const std::string &path, const std::string
       throw std::runtime_error("response_not_json_object");
     }
 
-    if (ExtractServerError(trimmed) == "rate_limited" && rateAttempt < static_cast<int>(rateRetryDelays.size())) {
+    const bool isRateLimited = (code == 429) || (ExtractServerError(trimmed) == "rate_limited");
+    if (isRateLimited && rateAttempt < static_cast<int>(rateRetryDelays.size())) {
       std::this_thread::sleep_for(std::chrono::seconds(rateRetryDelays[rateAttempt]));
       currentNonce = GenerateNonceHex32();
       mutableBody = RefreshNonceInBody(mutableBody, currentNonce);
@@ -539,6 +555,7 @@ void AuthForgeClient::Logout() {
   rawPayloadB64_.clear();
   signature_.clear();
   derivedKey_.clear();
+  sigKey_.clear();
   sessionDataJson_.clear();
   appVariablesJson_.clear();
   licenseVariablesJson_.clear();
@@ -1007,11 +1024,21 @@ std::string AuthForgeClient::GenerateNonceHex32() {
   return BytesToHexLower(bytes);
 }
 
-std::vector<unsigned char> AuthForgeClient::DeriveKey(const std::string &nonce) const {
-  const std::string seed = appSecret_ + nonce;
+std::vector<unsigned char> AuthForgeClient::Sha256Bytes(const std::string &input) {
   std::vector<unsigned char> digest(SHA256_DIGEST_LENGTH);
-  SHA256(reinterpret_cast<const unsigned char *>(seed.data()), seed.size(), digest.data());
+  SHA256(reinterpret_cast<const unsigned char *>(input.data()), input.size(), digest.data());
   return digest;
+}
+
+std::vector<unsigned char> AuthForgeClient::DeriveValidateKey(const std::string &nonce) const {
+  return Sha256Bytes(appSecret_ + nonce);
+}
+
+std::vector<unsigned char> AuthForgeClient::DeriveHeartbeatKey(const std::string &nonce) const {
+  if (sigKey_.empty()) {
+    throw std::runtime_error("sig_key_not_set");
+  }
+  return Sha256Bytes(sigKey_ + nonce);
 }
 
 std::string AuthForgeClient::HmacSha256HexLower(const std::vector<unsigned char> &key, const std::string &message) {
@@ -1152,7 +1179,7 @@ bool AuthForgeClient::IsSuccessStatus(const JsonValue &status) {
   return token == "ok" || token == "success" || token == "valid" || token == "true" || token == "1";
 }
 
-std::optional<long long> AuthForgeClient::ExtractExpiresInFromSessionToken(const std::string &sessionToken) {
+std::optional<std::string> AuthForgeClient::DecodeSessionTokenBody(const std::string &sessionToken) {
   const std::size_t dot = sessionToken.find('.');
   if (dot == std::string::npos) {
     return std::nullopt;
@@ -1169,8 +1196,31 @@ std::optional<long long> AuthForgeClient::ExtractExpiresInFromSessionToken(const
     return std::nullopt;
   }
 
-  const std::string payloadJson(decoded.begin(), decoded.end());
-  return ExtractJsonInt(payloadJson, "expiresIn");
+  return std::string(decoded.begin(), decoded.end());
+}
+
+std::optional<long long> AuthForgeClient::ExtractExpiresInFromSessionToken(const std::string &sessionToken) {
+  const auto body = DecodeSessionTokenBody(sessionToken);
+  if (!body.has_value()) {
+    return std::nullopt;
+  }
+  return ExtractJsonInt(*body, "expiresIn");
+}
+
+std::optional<std::string> AuthForgeClient::ExtractSigKeyFromSessionToken(const std::string &sessionToken) {
+  const auto body = DecodeSessionTokenBody(sessionToken);
+  if (!body.has_value()) {
+    return std::nullopt;
+  }
+  auto sigKey = ExtractJsonString(*body, "sigKey");
+  if (!sigKey.has_value()) {
+    return std::nullopt;
+  }
+  const std::string trimmed = Trim(*sigKey);
+  if (trimmed.empty()) {
+    return std::nullopt;
+  }
+  return trimmed;
 }
 
 void AuthForgeClient::VerifySignature(
