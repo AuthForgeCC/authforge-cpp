@@ -16,9 +16,8 @@
 
 #include <curl/curl.h>
 #include <openssl/crypto.h>
-#include <openssl/hmac.h>
-#include <openssl/rand.h>
 #include <openssl/sha.h>
+#include <sodium.h>
 
 #ifdef _WIN32
 #include <iphlpapi.h>
@@ -176,6 +175,7 @@ std::optional<std::string> ExtractNonceFromBody(const std::string &bodyJson) {
 AuthForgeClient::AuthForgeClient(
     std::string appId,
     std::string appSecret,
+    std::string publicKey,
     std::string heartbeatMode,
     int heartbeatInterval,
     std::string apiBaseUrl,
@@ -183,6 +183,7 @@ AuthForgeClient::AuthForgeClient(
     int requestTimeout)
     : appId_(std::move(appId)),
       appSecret_(std::move(appSecret)),
+      publicKey_(std::move(publicKey)),
       heartbeatMode_(ToLower(std::move(heartbeatMode))),
       heartbeatInterval_(heartbeatInterval),
       apiBaseUrl_(std::move(apiBaseUrl)),
@@ -195,6 +196,9 @@ AuthForgeClient::AuthForgeClient(
   if (appSecret_.empty()) {
     throw std::invalid_argument("app_secret must be a non-empty string");
   }
+  if (publicKey_.empty()) {
+    throw std::invalid_argument("public_key must be a non-empty string");
+  }
 
   std::transform(heartbeatMode_.begin(), heartbeatMode_.end(), heartbeatMode_.begin(),
                  [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
@@ -206,6 +210,13 @@ AuthForgeClient::AuthForgeClient(
   }
   while (!apiBaseUrl_.empty() && apiBaseUrl_.back() == '/') {
     apiBaseUrl_.pop_back();
+  }
+  if (sodium_init() < 0) {
+    throw std::runtime_error("sodium_init_failed");
+  }
+  verifyPublicKeyBytes_ = DecodeBase64Any(publicKey_);
+  if (verifyPublicKeyBytes_.size() != crypto_sign_PUBLICKEYBYTES) {
+    throw std::invalid_argument("public_key must be 32 bytes (base64 Ed25519 raw key)");
   }
 
   hwid_ = GetHwid();
@@ -291,20 +302,18 @@ void AuthForgeClient::ServerHeartbeat() {
 void AuthForgeClient::LocalHeartbeat() {
   std::string rawPayloadB64;
   std::string signature;
-  std::vector<unsigned char> derivedKey;
   std::optional<long long> expiresIn;
   {
     std::lock_guard<std::mutex> guard(lock_);
     rawPayloadB64 = rawPayloadB64_;
     signature = signature_;
-    derivedKey = derivedKey_;
     expiresIn = sessionExpiresIn_;
   }
 
-  if (rawPayloadB64.empty() || signature.empty() || derivedKey.empty()) {
+  if (rawPayloadB64.empty() || signature.empty()) {
     throw std::runtime_error("missing_local_verification_state");
   }
-  VerifySignature(rawPayloadB64, derivedKey, signature);
+  VerifySignature(rawPayloadB64, signature);
 
   if (!expiresIn.has_value()) {
     throw std::runtime_error("missing_session_expiry");
@@ -385,26 +394,13 @@ void AuthForgeClient::ApplySignedResponse(
     throw std::runtime_error("nonce_mismatch");
   }
 
-  std::vector<unsigned char> derivedKey;
-  switch (context) {
-  case SigningContext::Validate:
-    derivedKey = DeriveValidateKey(expectedNonce);
-    break;
-  case SigningContext::Heartbeat:
-    derivedKey = DeriveHeartbeatKey(expectedNonce);
-    break;
-  }
-  VerifySignature(rawPayloadB64, derivedKey, signature);
+  (void)context;
+  VerifySignature(rawPayloadB64, signature);
 
   const std::optional<std::string> sessionTokenOpt = ExtractJsonString(payloadJson, "sessionToken");
   const std::string sessionToken = sessionTokenOpt.has_value() ? Trim(*sessionTokenOpt) : "";
   if (sessionToken.empty()) {
     throw std::runtime_error("missing_sessionToken");
-  }
-
-  const std::optional<std::string> newSigKey = ExtractSigKeyFromSessionToken(sessionToken);
-  if (!newSigKey.has_value() || newSigKey->empty()) {
-    throw std::runtime_error("missing_sigKey");
   }
 
   std::optional<long long> expiresIn = ExtractExpiresInFromSessionToken(sessionToken);
@@ -425,8 +421,10 @@ void AuthForgeClient::ApplySignedResponse(
     lastNonce_ = expectedNonce;
     rawPayloadB64_ = rawPayloadB64;
     signature_ = signature;
-    derivedKey_ = derivedKey;
-    sigKey_ = *newSigKey;
+    keyId_.clear();
+    if (const std::optional<std::string> keyId = ExtractJsonString(responseJson, "keyId"); keyId.has_value()) {
+      keyId_ = *keyId;
+    }
     sessionDataJson_ = payloadJson;
     appVariablesJson_.clear();
     if (const std::optional<std::string> appVars = ExtractTopLevelObject(payloadJson, "appVariables"); appVars.has_value()) {
@@ -554,8 +552,7 @@ void AuthForgeClient::Logout() {
   lastNonce_.clear();
   rawPayloadB64_.clear();
   signature_.clear();
-  derivedKey_.clear();
-  sigKey_.clear();
+  keyId_.clear();
   sessionDataJson_.clear();
   appVariablesJson_.clear();
   licenseVariablesJson_.clear();
@@ -1017,9 +1014,7 @@ std::string AuthForgeClient::ToLower(std::string value) {
 
 std::string AuthForgeClient::GenerateNonceHex32() {
   std::array<unsigned char, 16> nonce{};
-  if (RAND_bytes(nonce.data(), static_cast<int>(nonce.size())) != 1) {
-    throw std::runtime_error("nonce_generation_failed");
-  }
+  randombytes_buf(nonce.data(), nonce.size());
   std::vector<unsigned char> bytes(nonce.begin(), nonce.end());
   return BytesToHexLower(bytes);
 }
@@ -1028,35 +1023,6 @@ std::vector<unsigned char> AuthForgeClient::Sha256Bytes(const std::string &input
   std::vector<unsigned char> digest(SHA256_DIGEST_LENGTH);
   SHA256(reinterpret_cast<const unsigned char *>(input.data()), input.size(), digest.data());
   return digest;
-}
-
-std::vector<unsigned char> AuthForgeClient::DeriveValidateKey(const std::string &nonce) const {
-  return Sha256Bytes(appSecret_ + nonce);
-}
-
-std::vector<unsigned char> AuthForgeClient::DeriveHeartbeatKey(const std::string &nonce) const {
-  if (sigKey_.empty()) {
-    throw std::runtime_error("sig_key_not_set");
-  }
-  return Sha256Bytes(sigKey_ + nonce);
-}
-
-std::string AuthForgeClient::HmacSha256HexLower(const std::vector<unsigned char> &key, const std::string &message) {
-  unsigned int outLen = SHA256_DIGEST_LENGTH;
-  std::vector<unsigned char> digest(SHA256_DIGEST_LENGTH);
-  unsigned char *result = HMAC(
-      EVP_sha256(),
-      key.data(),
-      static_cast<int>(key.size()),
-      reinterpret_cast<const unsigned char *>(message.data()),
-      message.size(),
-      digest.data(),
-      &outLen);
-  if (result == nullptr || outLen != SHA256_DIGEST_LENGTH) {
-    throw std::runtime_error("hmac_failed");
-  }
-  digest.resize(outLen);
-  return BytesToHexLower(digest);
 }
 
 std::string AuthForgeClient::Sha256Hex(const std::string &input) {
@@ -1204,35 +1170,21 @@ std::optional<long long> AuthForgeClient::ExtractExpiresInFromSessionToken(const
   if (!body.has_value()) {
     return std::nullopt;
   }
-  return ExtractJsonInt(*body, "expiresIn");
-}
-
-std::optional<std::string> AuthForgeClient::ExtractSigKeyFromSessionToken(const std::string &sessionToken) {
-  const auto body = DecodeSessionTokenBody(sessionToken);
-  if (!body.has_value()) {
-    return std::nullopt;
-  }
-  auto sigKey = ExtractJsonString(*body, "sigKey");
-  if (!sigKey.has_value()) {
-    return std::nullopt;
-  }
-  const std::string trimmed = Trim(*sigKey);
-  if (trimmed.empty()) {
-    return std::nullopt;
-  }
-  return trimmed;
+  return ExtractJsonInt(*body, "exp");
 }
 
 void AuthForgeClient::VerifySignature(
     const std::string &rawPayloadB64,
-    const std::vector<unsigned char> &derivedKey,
-    const std::string &signature) {
-  const std::string expected = HmacSha256HexLower(derivedKey, rawPayloadB64);
-  const std::string received = ToLower(Trim(signature));
-  if (expected.size() != received.size()) {
+    const std::string &signature) const {
+  const std::vector<unsigned char> signatureBytes = DecodeBase64Any(signature);
+  if (signatureBytes.size() != crypto_sign_BYTES) {
     throw std::runtime_error("signature_mismatch");
   }
-  if (CRYPTO_memcmp(expected.data(), received.data(), expected.size()) != 0) {
+  if (crypto_sign_verify_detached(
+          signatureBytes.data(),
+          reinterpret_cast<const unsigned char *>(rawPayloadB64.data()),
+          static_cast<unsigned long long>(rawPayloadB64.size()),
+          verifyPublicKeyBytes_.data()) != 0) {
     throw std::runtime_error("signature_mismatch");
   }
 }

@@ -19,6 +19,7 @@ public:
   AuthForgeClient(
       std::string appId,
       std::string appSecret,
+      std::string publicKey,
       std::string heartbeatMode,
       int heartbeatInterval = 900,
       std::string apiBaseUrl = kDefaultApiBaseUrl,
@@ -68,10 +69,7 @@ private:
   static std::string ToLower(std::string value);
 
   static std::string GenerateNonceHex32();
-  std::vector<unsigned char> DeriveValidateKey(const std::string &nonce) const;
-  std::vector<unsigned char> DeriveHeartbeatKey(const std::string &nonce) const;
   static std::vector<unsigned char> Sha256Bytes(const std::string &input);
-  static std::string HmacSha256HexLower(const std::vector<unsigned char> &key, const std::string &message);
   static std::string Sha256Hex(const std::string &input);
   static std::string BytesToHexLower(const std::vector<unsigned char> &bytes);
   static std::vector<unsigned char> DecodeBase64Any(const std::string &value);
@@ -79,12 +77,12 @@ private:
   static std::string AddBase64Padding(const std::string &value);
   static bool IsSuccessStatus(const JsonValue &status);
   static std::optional<long long> ExtractExpiresInFromSessionToken(const std::string &sessionToken);
-  static std::optional<std::string> ExtractSigKeyFromSessionToken(const std::string &sessionToken);
   static std::optional<std::string> DecodeSessionTokenBody(const std::string &sessionToken);
-  static void VerifySignature(const std::string &rawPayloadB64, const std::vector<unsigned char> &derivedKey, const std::string &signature);
+  void VerifySignature(const std::string &rawPayloadB64, const std::string &signature) const;
 
   std::string appId_;
   std::string appSecret_;
+  std::string publicKey_;
   std::string heartbeatMode_;
   int heartbeatInterval_;
   std::string apiBaseUrl_;
@@ -100,8 +98,8 @@ private:
   std::string lastNonce_;
   std::string rawPayloadB64_;
   std::string signature_;
-  std::vector<unsigned char> derivedKey_;
-  std::string sigKey_;
+  std::string keyId_;
+  std::vector<unsigned char> verifyPublicKeyBytes_;
   std::string sessionDataJson_;
   std::string appVariablesJson_;
   std::string licenseVariablesJson_;
@@ -115,6 +113,7 @@ private:
       "revoked",
       "hwid_mismatch",
       "no_credits",
+      "app_burn_cap_reached",
       "blocked",
       "rate_limited",
       "replay_detected",
@@ -122,8 +121,6 @@ private:
       "session_expired",
       "bad_request",
       "server_error",
-      "checksum_required",
-      "checksum_mismatch",
   };
 };
 

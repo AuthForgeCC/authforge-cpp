@@ -1,32 +1,30 @@
 {
-  "validate": {
-    "algorithm": {
-      "keyDerivation": "SHA256(appSecret + nonce)",
-      "signature": "HMAC-SHA256(raw_base64_payload_string, derivedKey)"
+  "algorithm": "ed25519",
+  "publicKey": "0wRcYWn44wk9tHOisXgso1wbtUqpFdy0IeMk4HXDiNc=",
+  "cases": [
+    {
+      "id": "validate_success",
+      "payload": "eyJzZXNzaW9uVG9rZW4iOiJzZXNzaW9uLnZhbGlkYXRlLnRva2VuIiwidGltZXN0YW1wIjoiMjAyNi0wNC0yMFQwMDowMDowMC4wMDBaIiwiZXhwaXJlc0luIjoxOTAwMDAwMDAwLCJub25jZSI6Im5vbmNlLXZhbGlkYXRlLTAwMSIsInJlcXVlc3RJZCI6InJlcS12YWxpZGF0ZS0wMDEiLCJhcHBWYXJpYWJsZXMiOnsidGllciI6InBybyJ9LCJsaWNlbnNlVmFyaWFibGVzIjp7InJlZ2lvbiI6InVzLWVhc3QtMSJ9fQ==",
+      "signature": "lw+rXqOXuB3q2Eh0b/vCiJU7fTivtNw7UejdhMA9tqkYU3Rl4FAETiru59ziSI14mMAY7IuPiesfFvaJ316BBw==",
+      "shouldVerify": true
     },
-    "inputs": {
-      "appSecret": "af_test_secret_2026_reference",
-      "nonce": "0123456789abcdeffedcba9876543210",
-      "payload": "eyJzZXNzaW9uVG9rZW4iOiJleUpoY0hCSlpDSTZJblJsYzNRdFlYQndJaXdpYkdsalpXNXpaVXRsZVNJNkluUmxjM1F0YTJWNUlpd2lhSGRwWkNJNkluUmxjM1JvZDJsa0lpd2ljMmxuUzJWNUlqb2lZV1pmZEdWemRGOXphV2RmYTJWNVh6SXdNalpmY21WbVpYSmxibU5sWHpBeE1qTTBOVFkzT0RsaFltTmtaV1lpTENKbGVIQnBjbVZ6U1c0aU9qRTNOREEwTXpNeU1EQjkud1g0ZG94V3N5SUgtZ0FndGpoMTVFck8wYXNvdWtoQkNnZmpHck5ZbGlaZyIsInRpbWVzdGFtcCI6MTc0MDQyOTYwMCwiZXhwaXJlc0luIjoxNzQwNDMzMjAwLCJub25jZSI6IjAxMjM0NTY3ODlhYmNkZWZmZWRjYmE5ODc2NTQzMjEwIn0="
+    {
+      "id": "heartbeat_success",
+      "payload": "eyJzZXNzaW9uVG9rZW4iOiJzZXNzaW9uLmhlYXJ0YmVhdC50b2tlbiIsInRpbWVzdGFtcCI6IjIwMjYtMDQtMjBUMDA6MDE6MDAuMDAwWiIsImV4cGlyZXNJbiI6MTkwMDAwMDMwMCwibm9uY2UiOiJub25jZS1oZWFydGJlYXQtMDAxIn0=",
+      "signature": "Tj6Ah8T3vip2OBOBFjHfzuX/9rpUVb3Lj1DfvDHSXK08fj3IGFC3B/EVV4jbiOsVrAZ5/McDPV/eKdh1qD32Bg==",
+      "shouldVerify": true
     },
-    "outputs": {
-      "derivedKeyHex": "531b682c6c910b5f0978522f398f92dbdfd7fedc123a2a11ba92b84229f36080",
-      "signatureHex": "5ea7a3412bf0c778a4df76eded7ce8031bfdccfe61d9f749c66a31006af7b55a"
+    {
+      "id": "tampered_payload",
+      "payload": "eyJzZXNzaW9uVG9rZW4iOiJzZXNzaW9uLnZhbGlkYXRlLnRva2VuIiwidGltZXN0YW1wIjoiMjAyNi0wNC0yMFQwMDowMDowMC4wMDBaIiwiZXhwaXJlc0luIjoxOTAwMDAwMDAwLCJub25jZSI6Im5vbmNlLXZhbGlkYXRlLTAwMSIsInJlcXVlc3RJZCI6InJlcS12YWxpZGF0ZS0wMDEiLCJhcHBWYXJpYWJsZXMiOnsidGllciI6InBybyJ9LCJsaWNlbnNlVmFyaWFibGVzIjp7InJlZ2lvbiI6InVzLWVhc3QtMSJ9fQAA",
+      "signature": "lw+rXqOXuB3q2Eh0b/vCiJU7fTivtNw7UejdhMA9tqkYU3Rl4FAETiru59ziSI14mMAY7IuPiesfFvaJ316BBw==",
+      "shouldVerify": false
+    },
+    {
+      "id": "wrong_app_key",
+      "payload": "eyJzZXNzaW9uVG9rZW4iOiJzZXNzaW9uLnZhbGlkYXRlLnRva2VuIiwidGltZXN0YW1wIjoiMjAyNi0wNC0yMFQwMDowMDowMC4wMDBaIiwiZXhwaXJlc0luIjoxOTAwMDAwMDAwLCJub25jZSI6Im5vbmNlLXZhbGlkYXRlLTAwMSIsInJlcXVlc3RJZCI6InJlcS12YWxpZGF0ZS0wMDEiLCJhcHBWYXJpYWJsZXMiOnsidGllciI6InBybyJ9LCJsaWNlbnNlVmFyaWFibGVzIjp7InJlZ2lvbiI6InVzLWVhc3QtMSJ9fQ==",
+      "signature": "CktbXhtaweoGQZ2ZIcDEdoDmWMA3GpMoS7lvHxZyABia6VOWBA5gTmvWePizXA8UjsBaDCt7+rNTNeeruWFPAg==",
+      "shouldVerify": false
     }
-  },
-  "heartbeat": {
-    "algorithm": {
-      "keyDerivation": "SHA256(sigKey + nonce)",
-      "signature": "HMAC-SHA256(raw_base64_payload_string, derivedKey)"
-    },
-    "inputs": {
-      "sigKey": "af_test_sig_key_2026_reference_0123456789abcdef",
-      "nonce": "0123456789abcdeffedcba9876543210",
-      "payload": "eyJzZXNzaW9uVG9rZW4iOiJleUpoY0hCSlpDSTZJblJsYzNRdFlYQndJaXdpYkdsalpXNXpaVXRsZVNJNkluUmxjM1F0YTJWNUlpd2lhSGRwWkNJNkluUmxjM1JvZDJsa0lpd2ljMmxuUzJWNUlqb2lZV1pmZEdWemRGOXphV2RmYTJWNVh6SXdNalpmY21WbVpYSmxibU5sWHpBeE1qTTBOVFkzT0RsaFltTmtaV1lpTENKbGVIQnBjbVZ6U1c0aU9qRTNOREEwTXpNeU1EQjkud1g0ZG94V3N5SUgtZ0FndGpoMTVFck8wYXNvdWtoQkNnZmpHck5ZbGlaZyIsInRpbWVzdGFtcCI6MTc0MDQyOTYwMCwiZXhwaXJlc0luIjoxNzQwNDMzMjAwLCJub25jZSI6IjAxMjM0NTY3ODlhYmNkZWZmZWRjYmE5ODc2NTQzMjEwIn0="
-    },
-    "outputs": {
-      "derivedKeyHex": "b2f978aac13c6fa4d42120fb1e0282c854c4ec22c0eda146d788c14a16fc306e",
-      "signatureHex": "e957ba04b074b425434c5fdd3272510a1281e15ddfcb9315b68ec0c4e7b34d7a"
-    }
-  }
+  ]
 }
