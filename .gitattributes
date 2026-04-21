@@ -1,0 +1,17 @@
+# Enforce LF in repo, CRLF in Windows checkouts for text files
+* text=auto
+
+# Never translate binary files
+*.png binary
+*.jpg binary
+*.ico binary
+*.dll binary
+*.so binary
+*.a binary
+*.lib binary
+
+# Force LF for cross-platform build/config files
+*.sh text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+Makefile text eol=lf
