@@ -1,0 +1,10 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+find_dependency(OpenSSL REQUIRED)
+find_dependency(CURL REQUIRED)
+find_dependency(Threads REQUIRED)
+
+include("${CMAKE_CURRENT_LIST_DIR}/AuthForgeTargets.cmake")
+
+check_required_components(AuthForge)

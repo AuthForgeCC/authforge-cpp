@@ -120,7 +120,7 @@ private:
       "app_disabled",
       "session_expired",
       "bad_request",
-      "server_error",
+      "system_error",
   };
 };
 

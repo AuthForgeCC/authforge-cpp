@@ -2,7 +2,7 @@
 
 Official C++ SDK for [AuthForge](https://authforge.cc) — credit-based license key authentication with Ed25519-verified responses.
 
-**Minimal dependencies.** libsodium (Ed25519 verification), OpenSSL (SHA-256/HWID hashing), and libcurl (HTTP). Targets C++17. Works on Windows (MSVC), Linux (GCC/Clang), and macOS (Clang).
+**Single-source CMake library.** Public headers plus one implementation file (`authforge_sdk.cpp`) packaged as `authforge_sdk`, linking OpenSSL and libcurl. Targets C++17. Works on Windows (MSVC), Linux (GCC/Clang), and macOS (Clang).
 
 ## Quick Start
 
@@ -42,12 +42,19 @@ int main() {
 ### CMake
 
 ```bash
-mkdir build && cd build
-cmake ..
-cmake --build .
+cmake -S . -B build
+cmake --build build
+cmake --install build --prefix /your/prefix
 ```
 
-Requires OpenSSL, libsodium, and libcurl to be findable by CMake. On Linux, for example: `apt install libssl-dev libsodium-dev libcurl4-openssl-dev`.
+Requires OpenSSL and libcurl to be findable by CMake. On Linux, for example: `apt install libssl-dev libcurl4-openssl-dev`.
+
+### Using from another CMake project
+
+```cmake
+find_package(AuthForge CONFIG REQUIRED)
+target_link_libraries(yourapp PRIVATE AuthForge::authforge_sdk)
+```
 
 ## Configuration
 
@@ -84,7 +91,7 @@ Requires OpenSSL, libsodium, and libcurl to be findable by CMake. On Linux, for 
 If authentication fails, the SDK calls your `onFailure` callback if one is provided. If no callback is set, **the SDK calls `std::exit(1)` to terminate the process.** This is intentional — it prevents your app from running without a valid license.
 
 Recognized server errors:
-`invalid_app`, `invalid_key`, `expired`, `revoked`, `hwid_mismatch`, `no_credits`, `blocked`, `rate_limited`, `replay_detected`, `app_disabled`, `session_expired`, `bad_request`
+`invalid_app`, `invalid_key`, `expired`, `revoked`, `hwid_mismatch`, `no_credits`, `app_burn_cap_reached`, `blocked`, `rate_limited`, `replay_detected`, `app_disabled`, `session_expired`, `bad_request`, `system_error`
 
 Request retries are automatic inside the internal HTTP layer:
 - `rate_limited`: retry after 2s, then 5s (max 3 attempts total)
@@ -123,7 +130,6 @@ The shared `test_vectors.json` file validates cross-language Ed25519 verificatio
 
 - C++17
 - OpenSSL
-- libsodium
 - libcurl
 
 ## License

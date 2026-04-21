@@ -1,5 +1,10 @@
 cmake_minimum_required(VERSION 3.16)
-project(AuthForgeCPPSDK LANGUAGES CXX)
+project(AuthForgeCPPSDK VERSION 1.0.0 LANGUAGES CXX)
+
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+
+option(AUTHFORGE_BUILD_VECTOR_GENERATOR "Build the test vector generator" OFF)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -10,12 +15,45 @@ find_package(CURL REQUIRED)
 find_package(Threads REQUIRED)
 
 add_library(authforge_sdk authforge_sdk.cpp)
-target_include_directories(authforge_sdk PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(authforge_sdk PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+  $<INSTALL_INTERFACE:include>
+)
 target_link_libraries(authforge_sdk PUBLIC OpenSSL::Crypto CURL::libcurl Threads::Threads)
 
 if(WIN32)
   target_link_libraries(authforge_sdk PRIVATE iphlpapi ws2_32)
 endif()
 
-add_executable(generate_vectors generate_vectors.cpp)
-target_link_libraries(generate_vectors PRIVATE OpenSSL::Crypto)
+install(
+  TARGETS authforge_sdk
+  EXPORT authforgeTargets
+  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+install(FILES authforge_sdk.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+
+install(
+  EXPORT authforgeTargets
+  FILE AuthForgeTargets.cmake
+  NAMESPACE AuthForge::
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/AuthForge
+)
+
+configure_package_config_file(
+  "${CMAKE_CURRENT_SOURCE_DIR}/cmake/AuthForgeConfig.cmake.in"
+  "${CMAKE_CURRENT_BINARY_DIR}/AuthForgeConfig.cmake"
+  INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/AuthForge"
+)
+
+install(
+  FILES "${CMAKE_CURRENT_BINARY_DIR}/AuthForgeConfig.cmake"
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/AuthForge
+)
+
+if(AUTHFORGE_BUILD_VECTOR_GENERATOR)
+  add_executable(generate_vectors generate_vectors.cpp)
+  target_link_libraries(generate_vectors PRIVATE OpenSSL::Crypto)
+endif()
