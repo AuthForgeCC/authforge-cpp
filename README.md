@@ -2,7 +2,7 @@
 
 Official C++ SDK for [AuthForge](https://authforge.cc) — credit-based license key authentication with Ed25519-verified responses.
 
-**Single-source CMake library.** Public headers plus one implementation file (`authforge_sdk.cpp`) packaged as `authforge_sdk`, linking OpenSSL and libcurl. Targets C++17. Works on Windows (MSVC), Linux (GCC/Clang), and macOS (Clang).
+**Single-source CMake library.** Public headers plus one implementation file (`authforge_sdk.cpp`) packaged as `authforge_sdk`, linking **libsodium** (Ed25519), **OpenSSL** (SHA and helpers), and **libcurl** (HTTP). Targets C++17. Works on Windows (MSVC), Linux (GCC/Clang), and macOS (Clang).
 
 ## Quick Start
 
@@ -47,7 +47,14 @@ cmake --build build
 cmake --install build --prefix /your/prefix
 ```
 
-Requires OpenSSL and libcurl to be findable by CMake. On Linux, for example: `apt install libssl-dev libcurl4-openssl-dev`.
+CMake must be able to find **libsodium**, **OpenSSL**, and **libcurl** (headers and libraries). Examples:
+
+- **Linux (Debian/Ubuntu):** `sudo apt install libsodium-dev libssl-dev libcurl4-openssl-dev`
+- **macOS (Homebrew):** `brew install libsodium openssl curl` — if CMake does not pick up Homebrew paths automatically, set `CMAKE_PREFIX_PATH` to your prefix (often `/opt/homebrew` on Apple Silicon, `/usr/local` on Intel).
+- **Windows:** Install dependencies with [vcpkg](https://vcpkg.io/), then configure with its toolchain file, for example:  
+  `vcpkg install libsodium:x64-windows openssl:x64-windows curl:x64-windows`  
+  `cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=%VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake`  
+  (Adjust triplet and `VCPKG_ROOT` to match your setup.)
 
 ### Using from another CMake project
 
@@ -137,6 +144,7 @@ The shared `test_vectors.json` file validates cross-language Ed25519 verificatio
 ## Requirements
 
 - C++17
+- libsodium
 - OpenSSL
 - libcurl
 

@@ -14,12 +14,17 @@ find_package(OpenSSL REQUIRED)
 find_package(CURL REQUIRED)
 find_package(Threads REQUIRED)
 
+find_path(SODIUM_INCLUDE_DIR sodium.h REQUIRED)
+find_library(SODIUM_LIBRARY NAMES sodium libsodium REQUIRED)
+
 add_library(authforge_sdk authforge_sdk.cpp)
 target_include_directories(authforge_sdk PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
   $<INSTALL_INTERFACE:include>
 )
+target_include_directories(authforge_sdk PRIVATE ${SODIUM_INCLUDE_DIR})
 target_link_libraries(authforge_sdk PUBLIC OpenSSL::Crypto CURL::libcurl Threads::Threads)
+target_link_libraries(authforge_sdk PRIVATE ${SODIUM_LIBRARY})
 
 if(WIN32)
   target_link_libraries(authforge_sdk PRIVATE iphlpapi ws2_32)
