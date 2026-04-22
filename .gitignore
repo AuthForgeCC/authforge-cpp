@@ -1,4 +1,5 @@
 build/
+build-*/
 cmake-build-*/
 *.o
 *.obj
@@ -9,3 +10,7 @@ cmake-build-*/
 .vs/
 CMakeCache.txt
 CMakeFiles/
+
+# Debug symbols / IDE
+*.pdb
+.idea/

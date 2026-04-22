@@ -1,0 +1,30 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify tag matches CMakeLists version
+        run: |
+          TAG="${GITHUB_REF#refs/tags/v}"
+          CMAKE=$(grep -oP 'VERSION \K[0-9]+\.[0-9]+\.[0-9]+' CMakeLists.txt | head -1)
+          if [ "$TAG" != "$CMAKE" ]; then
+            echo "Tag v$TAG does not match CMakeLists.txt version $CMAKE"
+            exit 1
+          fi
+      - name: Create source archive
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          git archive --format=tar.gz --prefix=authforge-cpp-${TAG}/ -o authforge-cpp-${TAG}.tar.gz HEAD
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: authforge-cpp-*.tar.gz
+          generate_release_notes: true
