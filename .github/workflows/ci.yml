@@ -7,6 +7,13 @@ on:
 
 jobs:
   build:
+    # Windows vcpkg builds are slow the first time (OpenSSL, curl, etc.). After that,
+    # vcpkg restores prebuilt packages from the repo Actions cache via x-gha.
+    permissions:
+      contents: read
+      actions: write
+    env:
+      VCPKG_BINARY_SOURCES: clear;x-gha,readwrite
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]

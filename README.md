@@ -4,6 +4,8 @@ Official C++ SDK for [AuthForge](https://authforge.cc) — credit-based license 
 
 **Single-source CMake library.** Public headers plus one implementation file (`authforge_sdk.cpp`) packaged as `authforge_sdk`, linking **libsodium** (Ed25519), **OpenSSL** (SHA and helpers), and **libcurl** (HTTP). Targets C++17. Works on Windows (MSVC), Linux (GCC/Clang), and macOS (Clang).
 
+There is **no C++ package registry** for this SDK. Ship source via **GitHub Releases** (tag `v*`, source archive) or by **cloning** the repository, then build with CMake as below.
+
 ## Quick Start
 
 Add `authforge_sdk.h` and `authforge_sdk.cpp` to your project, then:

@@ -9,7 +9,7 @@ AuthForge is a license key validation service. Your app sends a license key + ha
 
 ## Installation
 
-Add `authforge_sdk.h` and `authforge_sdk.cpp` to your project. Requires C++17, OpenSSL, and libcurl (see README for CMake).
+Add `authforge_sdk.h` and `authforge_sdk.cpp` to your project, or consume the library via CMake `find_package` after installing from source (see README). Requires C++17, **libsodium**, OpenSSL, and libcurl.
 
 ## Minimal working integration
 
