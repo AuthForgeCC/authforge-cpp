@@ -24,7 +24,8 @@ public:
       int heartbeatInterval = 900,
       std::string apiBaseUrl = kDefaultApiBaseUrl,
       std::function<void(const std::string &, const std::exception *)> onFailure = nullptr,
-      int requestTimeout = 15);
+      int requestTimeout = 15,
+      int ttlSeconds = 0);
 
   bool Login(const std::string &licenseKey);
   void Logout();
@@ -88,6 +89,10 @@ private:
   std::string apiBaseUrl_;
   std::function<void(const std::string &, const std::exception *)> onFailure_;
   int requestTimeout_;
+  // Requested session token lifetime in seconds for /auth/validate. 0 means
+  // "let the server pick its default" (24h today). Server clamps to
+  // [3600, 604800]; preserved across heartbeat refreshes.
+  int ttlSeconds_;
 
   mutable std::mutex lock_;
   bool heartbeatStarted_;

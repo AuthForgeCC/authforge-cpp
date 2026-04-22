@@ -180,7 +180,8 @@ AuthForgeClient::AuthForgeClient(
     int heartbeatInterval,
     std::string apiBaseUrl,
     std::function<void(const std::string &, const std::exception *)> onFailure,
-    int requestTimeout)
+    int requestTimeout,
+    int ttlSeconds)
     : appId_(std::move(appId)),
       appSecret_(std::move(appSecret)),
       publicKey_(std::move(publicKey)),
@@ -189,6 +190,7 @@ AuthForgeClient::AuthForgeClient(
       apiBaseUrl_(std::move(apiBaseUrl)),
       onFailure_(std::move(onFailure)),
       requestTimeout_(requestTimeout),
+      ttlSeconds_(ttlSeconds > 0 ? ttlSeconds : 0),
       heartbeatStarted_(false) {
   if (appId_.empty()) {
     throw std::invalid_argument("app_id must be a non-empty string");
@@ -328,13 +330,19 @@ void AuthForgeClient::LocalHeartbeat() {
 
 void AuthForgeClient::ValidateAndStore(const std::string &licenseKey) {
   const std::string nonce = GenerateNonceHex32();
-  const std::string body = BuildJsonBody({
+  std::string body = BuildJsonBody({
       {"appId", appId_},
       {"appSecret", appSecret_},
       {"licenseKey", licenseKey},
       {"hwid", hwid_},
       {"nonce", nonce},
   });
+  // BuildJsonBody always emits string values; splice ttlSeconds in as a raw
+  // integer when the caller requested a custom session lifetime.
+  if (ttlSeconds_ > 0 && body.size() >= 2 && body.back() == '}') {
+    body.pop_back();
+    body += ",\"ttlSeconds\":" + std::to_string(ttlSeconds_) + "}";
+  }
   std::string usedNonce = nonce;
   const std::string response = PostJson("/auth/validate", body, &usedNonce);
   ApplySignedResponse(response, usedNonce, licenseKey, SigningContext::Validate);

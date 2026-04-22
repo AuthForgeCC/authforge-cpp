@@ -57,10 +57,18 @@ int main() {
 | `appId` | `std::string` | yes | — | Application ID |
 | `appSecret` | `std::string` | yes | — | Application secret |
 | `heartbeatMode` | `std::string` | yes | — | `"SERVER"` or `"LOCAL"` |
-| `heartbeatInterval` | `int` | no | `900` | Seconds between heartbeats |
+| `heartbeatInterval` | `int` | no | `900` | Seconds between heartbeats (any value ≥ 1 is supported; revocations apply on the next heartbeat) |
 | `apiBaseUrl` | `std::string` | no | `kDefaultApiBaseUrl` (`https://auth.authforge.cc`) | API base URL |
 | `onFailure` | `std::function<void(const std::string&, const std::exception*)>` | no | `nullptr` | Failure callback; if null, `std::exit(1)` |
 | `requestTimeout` | `int` | no | `15` | HTTP timeout (seconds) |
+| `ttlSeconds` | `int` | no | `0` (server default: 86400) | Requested session token lifetime. `0` means "server default". Server clamps to `[3600, 604800]`; preserved across heartbeat refreshes. |
+
+## Billing model
+
+- `Login()` calls `/auth/validate` and costs **1 credit**.
+- Heartbeats cost **1 credit per 10 successful calls** (billed on every 10th heartbeat).
+- Any heartbeat interval ≥ 1 second is economically safe — cost scales with how many heartbeats you send, not how often.
+- Revocations take effect on the **next** heartbeat regardless of interval.
 
 ## Methods
 
@@ -76,6 +84,9 @@ int main() {
 ## Error codes the server can return
 
 invalid_app, invalid_key, expired, revoked, hwid_mismatch, no_credits, blocked, rate_limited, replay_detected, session_expired, app_disabled, bad_request
+
+Notes:
+- `rate_limited` and `replay_detected` are only returned from `/auth/validate`. Heartbeats are not IP rate-limited and do not enforce nonce replay.
 
 ## Common patterns
 

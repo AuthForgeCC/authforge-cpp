@@ -64,10 +64,18 @@ target_link_libraries(yourapp PRIVATE AuthForge::authforge_sdk)
 | `appSecret` | string | required | Your application secret from the AuthForge dashboard |
 | `publicKey` | string | required | App Ed25519 public key (base64) from dashboard |
 | `heartbeatMode` | string | required | `"SERVER"` or `"LOCAL"` (see below) |
-| `heartbeatInterval` | int | `900` | Seconds between heartbeat checks (default 15 min) |
+| `heartbeatInterval` | int | `900` | Seconds between heartbeat checks (any value ≥ 1; default 15 min) |
 | `apiBaseUrl` | string | `https://auth.authforge.cc` | API endpoint |
 | `onFailure` | std::function | `nullptr` | Callback `(const string&, const exception*)` on auth failure |
 | `requestTimeout` | int | `15` | HTTP request timeout in seconds |
+| `ttlSeconds` | int | `0` (server default: 86400) | Requested session token lifetime. `0` means "server default". Server clamps to `[3600, 604800]`; preserved across heartbeat refreshes. |
+
+## Billing
+
+- **One `Login()` call = 1 credit** (one `/auth/validate` debit).
+- **10 heartbeats on the same session = 1 credit** (debited on every 10th successful heartbeat).
+
+Any heartbeat interval is safe economically: a desktop app running 6h/day at a 15-minute interval burns ~3–4 credits/day; a server app running 24/7 at a 1-minute interval burns ~145 credits/day. Choose your interval based on how quickly you need revocations to propagate (they always land on the **next** heartbeat).
 
 ## Methods
 
