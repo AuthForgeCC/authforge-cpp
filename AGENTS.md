@@ -62,6 +62,9 @@ int main() {
 | `onFailure` | `std::function<void(const std::string&, const std::exception*)>` | no | `nullptr` | Failure callback; if null, `std::exit(1)` |
 | `requestTimeout` | `int` | no | `15` | HTTP timeout (seconds) |
 | `ttlSeconds` | `int` | no | `0` (server default: 86400) | Requested session token lifetime. `0` means "server default". Server clamps to `[3600, 604800]`; preserved across heartbeat refreshes. |
+| `hwidOverride` | `std::string` | no | `""` | Optional custom HWID/subject string. When non-empty (for example `tg:123456789`), the SDK sends it instead of generating a machine fingerprint. |
+
+For Telegram/Discord bot flows, prefer immutable IDs (`tg:<user_id>`, `discord:<user_id>`) instead of usernames.
 
 ## Billing model
 

@@ -25,9 +25,15 @@ public:
       std::string apiBaseUrl = kDefaultApiBaseUrl,
       std::function<void(const std::string &, const std::exception *)> onFailure = nullptr,
       int requestTimeout = 15,
-      int ttlSeconds = 0);
+      int ttlSeconds = 0,
+      std::string hwidOverride = "");
 
   bool Login(const std::string &licenseKey);
+  bool SelfBan(const std::string &licenseKey = "",
+               const std::string &sessionToken = "",
+               bool revokeLicense = true,
+               bool blacklistHwid = true,
+               bool blacklistIp = true);
   void Logout();
   bool IsAuthenticated() const;
   std::optional<std::string> GetSessionDataJson() const;
@@ -124,6 +130,7 @@ private:
       "replay_detected",
       "app_disabled",
       "session_expired",
+      "revoke_requires_session",
       "bad_request",
       "system_error",
   };

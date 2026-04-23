@@ -78,6 +78,24 @@ target_link_libraries(yourapp PRIVATE AuthForge::authforge_sdk)
 | `onFailure` | std::function | `nullptr` | Callback `(const string&, const exception*)` on auth failure |
 | `requestTimeout` | int | `15` | HTTP request timeout in seconds |
 | `ttlSeconds` | int | `0` (server default: 86400) | Requested session token lifetime. `0` means "server default". Server clamps to `[3600, 604800]`; preserved across heartbeat refreshes. |
+| `hwidOverride` | string | `""` | Optional custom hardware/subject identifier. When non-empty, the SDK uses this value instead of generated device fingerprint data. |
+
+### Identity-based binding example (Telegram/Discord)
+
+```cpp
+authforge::AuthForgeClient client(
+    "YOUR_APP_ID",
+    "YOUR_APP_SECRET",
+    "YOUR_PUBLIC_KEY",
+    "SERVER",
+    900,
+    authforge::AuthForgeClient::kDefaultApiBaseUrl,
+    onFailure,
+    15,
+    0,
+    "tg:" + std::to_string(telegramUserId) // or "discord:" + std::to_string(discordUserId)
+);
+```
 
 ## Billing
 
@@ -91,6 +109,7 @@ Any heartbeat interval is safe economically: a desktop app running 6h/day at a 1
 | Method | Returns | Description |
 |---|---|---|
 | `Login(const std::string&)` | `bool` | Validates key and stores signed session (`sessionToken`, `expiresIn`, `appVariables`, `licenseVariables`) |
+| `SelfBan(...)` | `bool` | Requests `/auth/selfban` to blacklist HWID/IP and optionally revoke (session-authenticated only) |
 | `Logout()` | `void` | Stops heartbeat and clears all session/auth state |
 | `IsAuthenticated()` | `bool` | True when an active authenticated session exists |
 | `GetSessionDataJson()` | `std::optional<std::string>` | Full decoded payload JSON |
@@ -108,7 +127,7 @@ Any heartbeat interval is safe economically: a desktop app running 6h/day at a 1
 If authentication fails, the SDK calls your `onFailure` callback if one is provided. If no callback is set, **the SDK calls `std::exit(1)` to terminate the process.** This is intentional — it prevents your app from running without a valid license.
 
 Recognized server errors:
-`invalid_app`, `invalid_key`, `expired`, `revoked`, `hwid_mismatch`, `no_credits`, `app_burn_cap_reached`, `blocked`, `rate_limited`, `replay_detected`, `app_disabled`, `session_expired`, `bad_request`, `system_error`
+`invalid_app`, `invalid_key`, `expired`, `revoked`, `hwid_mismatch`, `no_credits`, `app_burn_cap_reached`, `blocked`, `rate_limited`, `replay_detected`, `app_disabled`, `session_expired`, `revoke_requires_session`, `bad_request`, `system_error`
 
 Request retries are automatic inside the internal HTTP layer:
 - `rate_limited`: retry after 2s, then 5s (max 3 attempts total)
@@ -131,9 +150,29 @@ authforge::AuthForgeClient client(
 );
 ```
 
+## Self-ban (tamper response)
+
+Use `SelfBan(...)` when anti-tamper checks trigger:
+
+```cpp
+// Post-session (authenticated): defaults to revoke + HWID/IP blacklist.
+client.SelfBan();
+
+// Pre-session: pass license key, SDK automatically disables revokeLicense.
+client.SelfBan("AF-XXXX-XXXX-XXXX");
+
+// Custom flags:
+client.SelfBan("", "", false, true, true);
+```
+
+`SelfBan(...)` chooses request mode automatically:
+- Uses post-session mode when a session token is available (`sessionToken` arg or current SDK session).
+- Falls back to pre-session mode with `licenseKey` + nonce + app secret.
+- In pre-session mode, revoke is always disabled client-side to avoid unsafe key revocations.
+
 ## How It Works
 
-1. **Login** — Collects a hardware fingerprint (MAC, CPU, disk serial), generates a random nonce, and sends everything to the AuthForge API. The server validates the license key, binds the HWID, deducts a credit, and returns a signed payload. The SDK verifies the Ed25519 signature and nonce to prevent replay attacks.
+1. **Login** — Uses `hwidOverride` when non-empty; otherwise collects a hardware fingerprint (MAC, CPU, disk serial). It then generates a random nonce and sends everything to the AuthForge API. The server validates the license key, binds the HWID, deducts a credit, and returns a signed payload. The SDK verifies the Ed25519 signature and nonce to prevent replay attacks.
 
 2. **Heartbeat** — A detached background thread checks in at the configured interval. In SERVER mode, it sends a fresh nonce and verifies the response. In LOCAL mode, it re-verifies the stored signature and checks expiry without network calls.
 

@@ -181,7 +181,8 @@ AuthForgeClient::AuthForgeClient(
     std::string apiBaseUrl,
     std::function<void(const std::string &, const std::exception *)> onFailure,
     int requestTimeout,
-    int ttlSeconds)
+    int ttlSeconds,
+    std::string hwidOverride)
     : appId_(std::move(appId)),
       appSecret_(std::move(appSecret)),
       publicKey_(std::move(publicKey)),
@@ -221,7 +222,8 @@ AuthForgeClient::AuthForgeClient(
     throw std::invalid_argument("public_key must be 32 bytes (base64 Ed25519 raw key)");
   }
 
-  hwid_ = GetHwid();
+  const std::string trimmedOverride = Trim(hwidOverride);
+  hwid_ = trimmedOverride.empty() ? GetHwid() : trimmedOverride;
 }
 
 bool AuthForgeClient::Login(const std::string &licenseKey) {
@@ -238,6 +240,84 @@ bool AuthForgeClient::Login(const std::string &licenseKey) {
     return false;
   } catch (...) {
     Fail("login_failed", nullptr);
+    return false;
+  }
+}
+
+bool AuthForgeClient::SelfBan(
+    const std::string &licenseKey,
+    const std::string &sessionToken,
+    bool revokeLicense,
+    bool blacklistHwid,
+    bool blacklistIp) {
+  try {
+    std::string resolvedSessionToken;
+    std::string resolvedLicenseKey;
+    std::string hwid;
+    {
+      std::lock_guard<std::mutex> guard(lock_);
+      resolvedSessionToken = Trim(sessionToken.empty() ? sessionToken_ : sessionToken);
+      resolvedLicenseKey = Trim(licenseKey.empty() ? licenseKey_ : licenseKey);
+      hwid = hwid_;
+    }
+
+    auto appendFlags = [](std::string body,
+                          bool revoke,
+                          bool includeRevoke,
+                          bool hwidFlag,
+                          bool ipFlag) {
+      if (body.size() < 2 || body.back() != '}') {
+        return body;
+      }
+      body.pop_back();
+      if (includeRevoke) {
+        body += ",\"revokeLicense\":";
+        body += revoke ? "true" : "false";
+      }
+      body += ",\"blacklistHwid\":";
+      body += hwidFlag ? "true" : "false";
+      body += ",\"blacklistIp\":";
+      body += ipFlag ? "true" : "false";
+      body.push_back('}');
+      return body;
+    };
+
+    std::string response;
+    if (!resolvedSessionToken.empty()) {
+      std::string body = BuildJsonBody({
+          {"appId", appId_},
+          {"sessionToken", resolvedSessionToken},
+          {"hwid", hwid},
+      });
+      body = appendFlags(body, revokeLicense, true, blacklistHwid, blacklistIp);
+      response = PostJson("/auth/selfban", body);
+    } else {
+      if (resolvedLicenseKey.empty()) {
+        throw std::runtime_error("missing_license_key");
+      }
+      std::string body = BuildJsonBody({
+          {"appId", appId_},
+          {"appSecret", appSecret_},
+          {"licenseKey", resolvedLicenseKey},
+          {"hwid", hwid},
+          {"nonce", GenerateNonceHex32()},
+      });
+      // Pre-session self-ban cannot revoke licenses.
+      body = appendFlags(body, false, true, blacklistHwid, blacklistIp);
+      response = PostJson("/auth/selfban", body);
+    }
+
+    JsonValue status;
+    ExtractJsonValue(response, "status", status);
+    if (!IsSuccessStatus(status)) {
+      throw std::runtime_error(ExtractServerError(response));
+    }
+    return true;
+  } catch (const std::exception &exc) {
+    Fail("selfban_failed", &exc);
+    return false;
+  } catch (...) {
+    Fail("selfban_failed", nullptr);
     return false;
   }
 }
