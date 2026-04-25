@@ -59,7 +59,7 @@ int main() {
 | `heartbeatMode` | `std::string` | yes | — | `"SERVER"` or `"LOCAL"` |
 | `heartbeatInterval` | `int` | no | `900` | Seconds between heartbeats (any value ≥ 1 is supported; revocations apply on the next heartbeat) |
 | `apiBaseUrl` | `std::string` | no | `kDefaultApiBaseUrl` (`https://auth.authforge.cc`) | API base URL |
-| `onFailure` | `std::function<void(const std::string&, const std::exception*)>` | no | `nullptr` | Failure callback; if null, `std::exit(1)` |
+| `onFailure` | `std::function<void(const std::string&, const std::exception*)>` | no | `nullptr` | Failure callback for `Login` / heartbeat; if null, `std::exit(1)` (not used by `ValidateLicense`) |
 | `requestTimeout` | `int` | no | `15` | HTTP timeout (seconds) |
 | `ttlSeconds` | `int` | no | `0` (server default: 86400) | Requested session token lifetime. `0` means "server default". Server clamps to `[3600, 604800]`; preserved across heartbeat refreshes. |
 | `hwidOverride` | `std::string` | no | `""` | Optional custom HWID/subject string. When non-empty (for example `tg:123456789`), the SDK sends it instead of generating a machine fingerprint. |
@@ -68,7 +68,7 @@ For Telegram/Discord bot flows, prefer immutable IDs (`tg:<user_id>`, `discord:<
 
 ## Billing model
 
-- `Login()` calls `/auth/validate` and costs **1 credit**.
+- Each `Login()` or `ValidateLicense()` calls `/auth/validate` and costs **1 credit**.
 - Heartbeats cost **1 credit per 10 successful calls** (billed on every 10th heartbeat).
 - Any heartbeat interval ≥ 1 second is economically safe — cost scales with how many heartbeats you send, not how often.
 - Revocations take effect on the **next** heartbeat regardless of interval.
@@ -78,6 +78,7 @@ For Telegram/Discord bot flows, prefer immutable IDs (`tg:<user_id>`, `discord:<
 | Method | Returns | Description |
 |--------|---------|-------------|
 | `Login(const std::string&)` | `bool` | Validates license and starts heartbeat |
+| `ValidateLicense(const std::string&)` | `ValidateLicenseResult` | Same validate + signatures; no session/heartbeat; **never** calls `onFailure` or `std::exit` |
 | `Logout()` | `void` | Stops heartbeat and clears state |
 | `IsAuthenticated()` | `bool` | Whether authenticated |
 | `GetSessionDataJson()` | `std::optional<std::string>` | Payload JSON string |

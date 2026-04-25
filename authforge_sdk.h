@@ -12,6 +12,17 @@
 
 namespace authforge {
 
+struct ValidateLicenseResult {
+  bool valid = false;
+  std::string errorCode;
+  std::string sessionToken;
+  long long expiresIn = 0;
+  std::string sessionDataJson;
+  std::string appVariablesJson;
+  std::string licenseVariablesJson;
+  std::string keyId;
+};
+
 class AuthForgeClient {
 public:
   static constexpr const char *kDefaultApiBaseUrl = "https://auth.authforge.cc";
@@ -29,6 +40,8 @@ public:
       std::string hwidOverride = "");
 
   bool Login(const std::string &licenseKey);
+  /// Same cryptographic validation as Login without persisting session state or starting heartbeats.
+  ValidateLicenseResult ValidateLicense(const std::string &licenseKey);
   bool SelfBan(const std::string &licenseKey = "",
                const std::string &sessionToken = "",
                bool revokeLicense = true,
@@ -54,7 +67,13 @@ private:
   void ServerHeartbeat();
   void LocalHeartbeat();
   void ValidateAndStore(const std::string &licenseKey);
-  void ApplySignedResponse(const std::string &responseJson, const std::string &expectedNonce, const std::optional<std::string> &licenseKey, SigningContext context);
+  void ApplySignedResponse(
+      const std::string &responseJson,
+      const std::string &expectedNonce,
+      const std::optional<std::string> &licenseKey,
+      SigningContext context,
+      bool persistToSession = true,
+      ValidateLicenseResult *validateOnlyOut = nullptr);
 
   std::string PostJson(const std::string &path, const std::string &bodyJson, std::string *usedNonce = nullptr) const;
   std::string ExtractServerError(const std::string &responseJson) const;

@@ -1,5 +1,5 @@
 ﻿cmake_minimum_required(VERSION 3.16)
-project(AuthForgeCPPSDK VERSION 1.0.2 LANGUAGES CXX)
+project(AuthForgeCPPSDK VERSION 1.0.3 LANGUAGES CXX)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)

@@ -244,6 +244,42 @@ bool AuthForgeClient::Login(const std::string &licenseKey) {
   }
 }
 
+ValidateLicenseResult AuthForgeClient::ValidateLicense(const std::string &licenseKey) {
+  ValidateLicenseResult result;
+  if (licenseKey.empty()) {
+    result.valid = false;
+    result.errorCode = "missing_license_key";
+    return result;
+  }
+
+  try {
+    const std::string nonce = GenerateNonceHex32();
+    std::string body = BuildJsonBody({
+        {"appId", appId_},
+        {"appSecret", appSecret_},
+        {"licenseKey", licenseKey},
+        {"hwid", hwid_},
+        {"nonce", nonce},
+    });
+    if (ttlSeconds_ > 0 && body.size() >= 2 && body.back() == '}') {
+      body.pop_back();
+      body += ",\"ttlSeconds\":" + std::to_string(ttlSeconds_) + "}";
+    }
+    std::string usedNonce = nonce;
+    const std::string response = PostJson("/auth/validate", body, &usedNonce);
+    ApplySignedResponse(response, usedNonce, std::nullopt, SigningContext::Validate, false, &result);
+    return result;
+  } catch (const std::exception &exc) {
+    result.valid = false;
+    result.errorCode = exc.what();
+    return result;
+  } catch (...) {
+    result.valid = false;
+    result.errorCode = "unknown_error";
+    return result;
+  }
+}
+
 bool AuthForgeClient::SelfBan(
     const std::string &licenseKey,
     const std::string &sessionToken,
@@ -432,7 +468,9 @@ void AuthForgeClient::ApplySignedResponse(
     const std::string &responseJson,
     const std::string &expectedNonce,
     const std::optional<std::string> &licenseKey,
-    SigningContext context) {
+    SigningContext context,
+    bool persistToSession,
+    ValidateLicenseResult *validateOnlyOut) {
   JsonValue status;
   ExtractJsonValue(responseJson, "status", status);
   if (!IsSuccessStatus(status)) {
@@ -497,6 +535,30 @@ void AuthForgeClient::ApplySignedResponse(
   }
   if (!expiresIn.has_value()) {
     throw std::runtime_error("missing_expiresIn");
+  }
+
+  if (validateOnlyOut != nullptr) {
+    validateOnlyOut->valid = true;
+    validateOnlyOut->errorCode.clear();
+    validateOnlyOut->sessionToken = sessionToken;
+    validateOnlyOut->expiresIn = *expiresIn;
+    validateOnlyOut->sessionDataJson = payloadJson;
+    validateOnlyOut->keyId.clear();
+    if (const std::optional<std::string> keyIdOpt = ExtractJsonString(responseJson, "keyId"); keyIdOpt.has_value()) {
+      validateOnlyOut->keyId = *keyIdOpt;
+    }
+    validateOnlyOut->appVariablesJson.clear();
+    if (const std::optional<std::string> appVars = ExtractTopLevelObject(payloadJson, "appVariables"); appVars.has_value()) {
+      validateOnlyOut->appVariablesJson = *appVars;
+    }
+    validateOnlyOut->licenseVariablesJson.clear();
+    if (const std::optional<std::string> licenseVars = ExtractTopLevelObject(payloadJson, "licenseVariables"); licenseVars.has_value()) {
+      validateOnlyOut->licenseVariablesJson = *licenseVars;
+    }
+  }
+
+  if (!persistToSession) {
+    return;
   }
 
   {
