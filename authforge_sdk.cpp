@@ -172,6 +172,30 @@ std::optional<std::string> ExtractNonceFromBody(const std::string &bodyJson) {
   return bodyJson.substr(valueStart, valueEnd - valueStart);
 }
 
+std::vector<std::string> AuthForgeClient::SplitCommaTrustList(const std::string &value) {
+  // Honour the same comma-separated convention the other SDKs use. Lets
+  // operators ship a rotation set through `AUTHFORGE_PUBLIC_KEY` without
+  // touching call sites that still pass a single string.
+  std::vector<std::string> out;
+  std::string current;
+  for (const char ch : value) {
+    if (ch == ',') {
+      const std::string trimmed = Trim(current);
+      if (!trimmed.empty()) {
+        out.push_back(trimmed);
+      }
+      current.clear();
+    } else {
+      current.push_back(ch);
+    }
+  }
+  const std::string trimmed = Trim(current);
+  if (!trimmed.empty()) {
+    out.push_back(trimmed);
+  }
+  return out;
+}
+
 AuthForgeClient::AuthForgeClient(
     std::string appId,
     std::string appSecret,
@@ -183,9 +207,32 @@ AuthForgeClient::AuthForgeClient(
     int requestTimeout,
     int ttlSeconds,
     std::string hwidOverride)
+    : AuthForgeClient(
+          std::move(appId),
+          std::move(appSecret),
+          SplitCommaTrustList(publicKey),
+          std::move(heartbeatMode),
+          heartbeatInterval,
+          std::move(apiBaseUrl),
+          std::move(onFailure),
+          requestTimeout,
+          ttlSeconds,
+          std::move(hwidOverride)) {}
+
+AuthForgeClient::AuthForgeClient(
+    std::string appId,
+    std::string appSecret,
+    std::vector<std::string> publicKeys,
+    std::string heartbeatMode,
+    int heartbeatInterval,
+    std::string apiBaseUrl,
+    std::function<void(const std::string &, const std::exception *)> onFailure,
+    int requestTimeout,
+    int ttlSeconds,
+    std::string hwidOverride)
     : appId_(std::move(appId)),
       appSecret_(std::move(appSecret)),
-      publicKey_(std::move(publicKey)),
+      publicKeys_(std::move(publicKeys)),
       heartbeatMode_(ToLower(std::move(heartbeatMode))),
       heartbeatInterval_(heartbeatInterval),
       apiBaseUrl_(std::move(apiBaseUrl)),
@@ -199,7 +246,17 @@ AuthForgeClient::AuthForgeClient(
   if (appSecret_.empty()) {
     throw std::invalid_argument("app_secret must be a non-empty string");
   }
-  if (publicKey_.empty()) {
+  // Drop blanks/duplicates while preserving caller order: the first slot is
+  // treated as the *current* key by tools/diagnostics.
+  std::vector<std::string> deduped;
+  for (auto &key : publicKeys_) {
+    const std::string trimmed = Trim(key);
+    if (trimmed.empty()) continue;
+    if (std::find(deduped.begin(), deduped.end(), trimmed) != deduped.end()) continue;
+    deduped.push_back(trimmed);
+  }
+  publicKeys_ = std::move(deduped);
+  if (publicKeys_.empty()) {
     throw std::invalid_argument("public_key must be a non-empty string");
   }
 
@@ -217,9 +274,13 @@ AuthForgeClient::AuthForgeClient(
   if (sodium_init() < 0) {
     throw std::runtime_error("sodium_init_failed");
   }
-  verifyPublicKeyBytes_ = DecodeBase64Any(publicKey_);
-  if (verifyPublicKeyBytes_.size() != crypto_sign_PUBLICKEYBYTES) {
-    throw std::invalid_argument("public_key must be 32 bytes (base64 Ed25519 raw key)");
+  verifyPublicKeysBytes_.reserve(publicKeys_.size());
+  for (const auto &key : publicKeys_) {
+    auto decoded = DecodeBase64Any(key);
+    if (decoded.size() != crypto_sign_PUBLICKEYBYTES) {
+      throw std::invalid_argument("public_key must be 32 bytes (base64 Ed25519 raw key)");
+    }
+    verifyPublicKeysBytes_.push_back(std::move(decoded));
   }
 
   const std::string trimmedOverride = Trim(hwidOverride);
@@ -1330,13 +1391,20 @@ void AuthForgeClient::VerifySignature(
   if (signatureBytes.size() != crypto_sign_BYTES) {
     throw std::runtime_error("signature_mismatch");
   }
-  if (crypto_sign_verify_detached(
-          signatureBytes.data(),
-          reinterpret_cast<const unsigned char *>(rawPayloadB64.data()),
-          static_cast<unsigned long long>(rawPayloadB64.size()),
-          verifyPublicKeyBytes_.data()) != 0) {
-    throw std::runtime_error("signature_mismatch");
+  // Walk the trust list and accept on first match. This is what gives us a
+  // hitless rotation window: while the server has a new key in production,
+  // clients pinned to the previous key continue to verify against it, and
+  // any client that picked up the new key verifies successfully too.
+  for (const auto &keyBytes : verifyPublicKeysBytes_) {
+    if (crypto_sign_verify_detached(
+            signatureBytes.data(),
+            reinterpret_cast<const unsigned char *>(rawPayloadB64.data()),
+            static_cast<unsigned long long>(rawPayloadB64.size()),
+            keyBytes.data()) == 0) {
+      return;
+    }
   }
+  throw std::runtime_error("signature_mismatch");
 }
 
 } // namespace authforge

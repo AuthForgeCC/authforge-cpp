@@ -27,6 +27,9 @@ class AuthForgeClient {
 public:
   static constexpr const char *kDefaultApiBaseUrl = "https://auth.authforge.cc";
 
+  /// Single-key constructor preserved for source compatibility. The provided
+  /// string may also be a comma-separated trust list (current,previous) so
+  /// callers can roll a key by re-deploying with an env var change.
   AuthForgeClient(
       std::string appId,
       std::string appSecret,
@@ -38,6 +41,24 @@ public:
       int requestTimeout = 15,
       int ttlSeconds = 0,
       std::string hwidOverride = "");
+
+  /// Rotation-aware constructor. The first entry should be the *current* key
+  /// (it is reflected back through GetPublicKey() for diagnostics);
+  /// subsequent entries are still trusted to support overlap windows.
+  AuthForgeClient(
+      std::string appId,
+      std::string appSecret,
+      std::vector<std::string> publicKeys,
+      std::string heartbeatMode,
+      int heartbeatInterval = 900,
+      std::string apiBaseUrl = kDefaultApiBaseUrl,
+      std::function<void(const std::string &, const std::exception *)> onFailure = nullptr,
+      int requestTimeout = 15,
+      int ttlSeconds = 0,
+      std::string hwidOverride = "");
+
+  /// Returns the configured trust list. Useful for tests and observability.
+  const std::vector<std::string> &GetPublicKeys() const noexcept { return publicKeys_; }
 
   bool Login(const std::string &licenseKey);
   /// Same cryptographic validation as Login without persisting session state or starting heartbeats.
@@ -106,9 +127,11 @@ private:
   static std::optional<std::string> DecodeSessionTokenBody(const std::string &sessionToken);
   void VerifySignature(const std::string &rawPayloadB64, const std::string &signature) const;
 
+  static std::vector<std::string> SplitCommaTrustList(const std::string &value);
+
   std::string appId_;
   std::string appSecret_;
-  std::string publicKey_;
+  std::vector<std::string> publicKeys_;
   std::string heartbeatMode_;
   int heartbeatInterval_;
   std::string apiBaseUrl_;
@@ -129,7 +152,7 @@ private:
   std::string rawPayloadB64_;
   std::string signature_;
   std::string keyId_;
-  std::vector<unsigned char> verifyPublicKeyBytes_;
+  std::vector<std::vector<unsigned char>> verifyPublicKeysBytes_;
   std::string sessionDataJson_;
   std::string appVariablesJson_;
   std::string licenseVariablesJson_;
