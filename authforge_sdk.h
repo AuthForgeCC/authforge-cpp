@@ -21,6 +21,13 @@ struct ValidateLicenseResult {
   std::string appVariablesJson;
   std::string licenseVariablesJson;
   std::string keyId;
+  std::optional<std::string> sessionExpiresAt;
+  bool licenseExpirationKnown = false;
+  /// ISO 8601 when `licenseExpirationKnown` and key is dated; empty when lifetime.
+  std::string licenseExpiresAt;
+  std::optional<int> maxHwidSlots;
+  std::optional<int> hwidCount;
+  std::optional<std::string> licenseLabel;
 };
 
 class AuthForgeClient {

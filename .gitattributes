@@ -1,5 +1,5 @@
-# Enforce LF in repo, CRLF in Windows checkouts for text files
-* text=auto
+# LF in the Git index and in the working tree on all platforms (avoids CRLF/LF churn on Windows).
+* text=auto eol=lf
 
 # Never translate binary files
 *.png binary

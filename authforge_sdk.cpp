@@ -616,6 +616,31 @@ void AuthForgeClient::ApplySignedResponse(
     if (const std::optional<std::string> licenseVars = ExtractTopLevelObject(payloadJson, "licenseVariables"); licenseVars.has_value()) {
       validateOnlyOut->licenseVariablesJson = *licenseVars;
     }
+    validateOnlyOut->sessionExpiresAt.reset();
+    if (const std::optional<std::string> sea = ExtractJsonString(payloadJson, "sessionExpiresAt"); sea.has_value() && !sea->empty()) {
+      validateOnlyOut->sessionExpiresAt = *sea;
+    }
+    validateOnlyOut->licenseExpirationKnown = false;
+    validateOnlyOut->licenseExpiresAt.clear();
+    JsonValue le;
+    if (ExtractJsonValue(payloadJson, "licenseExpiresAt", le) && le.exists) {
+      validateOnlyOut->licenseExpirationKnown = true;
+      if (le.isString) {
+        validateOnlyOut->licenseExpiresAt = le.value;
+      }
+    }
+    validateOnlyOut->maxHwidSlots.reset();
+    if (const std::optional<long long> mh = ExtractJsonInt(payloadJson, "maxHwidSlots"); mh.has_value()) {
+      validateOnlyOut->maxHwidSlots = static_cast<int>(*mh);
+    }
+    validateOnlyOut->hwidCount.reset();
+    if (const std::optional<long long> hc = ExtractJsonInt(payloadJson, "hwidCount"); hc.has_value()) {
+      validateOnlyOut->hwidCount = static_cast<int>(*hc);
+    }
+    validateOnlyOut->licenseLabel.reset();
+    if (const std::optional<std::string> ll = ExtractJsonString(payloadJson, "licenseLabel"); ll.has_value() && !ll->empty()) {
+      validateOnlyOut->licenseLabel = *ll;
+    }
   }
 
   if (!persistToSession) {
