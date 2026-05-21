@@ -57,7 +57,7 @@ int main() {
 | `appId` | `std::string` | yes | — | Application ID |
 | `appSecret` | `std::string` | yes | — | Application secret |
 | `heartbeatMode` | `std::string` | yes | — | `"SERVER"` or `"LOCAL"` |
-| `heartbeatInterval` | `int` | no | `900` | Seconds between heartbeats (any value ≥ 1 is supported; revocations apply on the next heartbeat) |
+| `heartbeatInterval` | `int` | no | `900` | Seconds between heartbeats (minimum `10`; revocations apply on the next heartbeat) |
 | `apiBaseUrl` | `std::string` | no | `kDefaultApiBaseUrl` (`https://auth.authforge.cc`) | API base URL |
 | `onFailure` | `std::function<void(const std::string&, const std::exception*)>` | no | `nullptr` | Failure callback for `Login` / heartbeat; if null, `std::exit(1)` (not used by `ValidateLicense`) |
 | `requestTimeout` | `int` | no | `15` | HTTP timeout (seconds) |
@@ -70,7 +70,7 @@ For Telegram/Discord bot flows, prefer immutable IDs (`tg:<user_id>`, `discord:<
 
 - Each `Login()` or `ValidateLicense()` calls `/auth/validate` and costs **1 credit**.
 - Heartbeats cost **1 credit per 10 successful calls** (billed on every 10th heartbeat).
-- Any heartbeat interval ≥ 1 second is economically safe — cost scales with how many heartbeats you send, not how often.
+- Keep heartbeat interval at or above 10 seconds. `/auth/heartbeat` is limited to 6 requests/minute per license key; cost still scales with how many heartbeats you send.
 - Revocations take effect on the **next** heartbeat regardless of interval.
 
 ## Methods
@@ -90,7 +90,7 @@ For Telegram/Discord bot flows, prefer immutable IDs (`tg:<user_id>`, `discord:<
 invalid_app, invalid_key, expired, revoked, hwid_mismatch, no_credits, blocked, rate_limited, replay_detected, session_expired, app_disabled, bad_request
 
 Notes:
-- `rate_limited` and `replay_detected` are only returned from `/auth/validate`. Heartbeats are not IP rate-limited and do not enforce nonce replay.
+- `replay_detected` is validate-only. `rate_limited` can be returned by `/auth/validate` and `/auth/heartbeat` (heartbeat is license-limited at 6/min and has no app-layer IP limit).
 
 ## Common patterns
 

@@ -181,6 +181,7 @@ private:
       "session_expired",
       "revoke_requires_session",
       "bad_request",
+      "malformed_request",
       "system_error",
   };
 };

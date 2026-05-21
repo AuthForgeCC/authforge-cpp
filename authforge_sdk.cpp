@@ -265,8 +265,8 @@ AuthForgeClient::AuthForgeClient(
   if (heartbeatMode_ != "LOCAL" && heartbeatMode_ != "SERVER") {
     throw std::invalid_argument("heartbeat_mode must be LOCAL or SERVER");
   }
-  if (heartbeatInterval_ <= 0) {
-    throw std::invalid_argument("heartbeat_interval must be > 0");
+  if (heartbeatInterval_ < 10) {
+    throw std::invalid_argument("heartbeat_interval must be >= 10");
   }
   while (!apiBaseUrl_.empty() && apiBaseUrl_.back() == '/') {
     apiBaseUrl_.pop_back();
