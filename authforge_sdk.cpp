@@ -196,6 +196,50 @@ std::vector<std::string> AuthForgeClient::SplitCommaTrustList(const std::string 
   return out;
 }
 
+namespace {
+
+// Maps the legacy heartbeatMode strings onto the OnlineHeartbeat policy while
+// preserving the exact legacy validation: anything other than LOCAL or SERVER
+// (case-insensitive) throws std::invalid_argument. LOCAL is the default grace
+// period behavior (OnlineHeartbeat::Off); SERVER enables online check-ins
+// (OnlineHeartbeat::On).
+OnlineHeartbeat ParseLegacyHeartbeatMode(std::string heartbeatMode) {
+  std::transform(heartbeatMode.begin(), heartbeatMode.end(), heartbeatMode.begin(),
+                 [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+  if (heartbeatMode == "SERVER") {
+    return OnlineHeartbeat::On;
+  }
+  if (heartbeatMode == "LOCAL") {
+    return OnlineHeartbeat::Off;
+  }
+  throw std::invalid_argument("heartbeat_mode must be LOCAL or SERVER");
+}
+
+} // namespace
+
+AuthForgeClient::AuthForgeClient(
+    std::string appId,
+    std::string appSecret,
+    std::string publicKey,
+    OnlineHeartbeat onlineHeartbeat,
+    int heartbeatInterval,
+    std::string apiBaseUrl,
+    std::function<void(const std::string &, const std::exception *)> onFailure,
+    int requestTimeout,
+    int ttlSeconds,
+    std::string hwidOverride)
+    : AuthForgeClient(
+          std::move(appId),
+          std::move(appSecret),
+          SplitCommaTrustList(publicKey),
+          onlineHeartbeat,
+          heartbeatInterval,
+          std::move(apiBaseUrl),
+          std::move(onFailure),
+          requestTimeout,
+          ttlSeconds,
+          std::move(hwidOverride)) {}
+
 AuthForgeClient::AuthForgeClient(
     std::string appId,
     std::string appSecret,
@@ -211,7 +255,7 @@ AuthForgeClient::AuthForgeClient(
           std::move(appId),
           std::move(appSecret),
           SplitCommaTrustList(publicKey),
-          std::move(heartbeatMode),
+          ParseLegacyHeartbeatMode(std::move(heartbeatMode)),
           heartbeatInterval,
           std::move(apiBaseUrl),
           std::move(onFailure),
@@ -230,10 +274,33 @@ AuthForgeClient::AuthForgeClient(
     int requestTimeout,
     int ttlSeconds,
     std::string hwidOverride)
+    : AuthForgeClient(
+          std::move(appId),
+          std::move(appSecret),
+          std::move(publicKeys),
+          ParseLegacyHeartbeatMode(std::move(heartbeatMode)),
+          heartbeatInterval,
+          std::move(apiBaseUrl),
+          std::move(onFailure),
+          requestTimeout,
+          ttlSeconds,
+          std::move(hwidOverride)) {}
+
+AuthForgeClient::AuthForgeClient(
+    std::string appId,
+    std::string appSecret,
+    std::vector<std::string> publicKeys,
+    OnlineHeartbeat onlineHeartbeat,
+    int heartbeatInterval,
+    std::string apiBaseUrl,
+    std::function<void(const std::string &, const std::exception *)> onFailure,
+    int requestTimeout,
+    int ttlSeconds,
+    std::string hwidOverride)
     : appId_(std::move(appId)),
       appSecret_(std::move(appSecret)),
       publicKeys_(std::move(publicKeys)),
-      heartbeatMode_(ToLower(std::move(heartbeatMode))),
+      onlineHeartbeat_(onlineHeartbeat == OnlineHeartbeat::On),
       heartbeatInterval_(heartbeatInterval),
       apiBaseUrl_(std::move(apiBaseUrl)),
       onFailure_(std::move(onFailure)),
@@ -260,11 +327,6 @@ AuthForgeClient::AuthForgeClient(
     throw std::invalid_argument("public_key must be a non-empty string");
   }
 
-  std::transform(heartbeatMode_.begin(), heartbeatMode_.end(), heartbeatMode_.begin(),
-                 [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
-  if (heartbeatMode_ != "LOCAL" && heartbeatMode_ != "SERVER") {
-    throw std::invalid_argument("heartbeat_mode must be LOCAL or SERVER");
-  }
   if (heartbeatInterval_ < 10) {
     throw std::invalid_argument("heartbeat_interval must be >= 10");
   }
@@ -439,10 +501,10 @@ void AuthForgeClient::HeartbeatLoop() noexcept {
       }
     }
     try {
-      if (heartbeatMode_ == "SERVER") {
+      if (onlineHeartbeat_) {
         ServerHeartbeat();
       } else {
-        LocalHeartbeat();
+        GracePeriodCheck();
       }
     } catch (const std::exception &exc) {
       Fail("heartbeat_failed", &exc);
@@ -478,7 +540,10 @@ void AuthForgeClient::ServerHeartbeat() {
   ApplySignedResponse(response, usedNonce, std::nullopt, SigningContext::Heartbeat);
 }
 
-void AuthForgeClient::LocalHeartbeat() {
+// Grace period check: no network calls. Re-verifies the signed session that
+// activation stored and fails with session_expired once the grace period
+// (the session TTL) has elapsed.
+void AuthForgeClient::GracePeriodCheck() {
   std::string rawPayloadB64;
   std::string signature;
   std::optional<long long> expiresIn;

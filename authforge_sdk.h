@@ -30,13 +30,69 @@ struct ValidateLicenseResult {
   std::optional<std::string> licenseLabel;
 };
 
+/// Opt-in policy for online check-ins after a successful activation.
+///
+/// Off (the default): after the client activates online via /auth/validate it
+/// keeps running on the Ed25519-signed session for the duration of the grace
+/// period (the session TTL: default 24h, server clamps 1h to 7d) without
+/// contacting AuthForge. The background loop re-verifies the signed session
+/// locally and fails once the grace period ends.
+///
+/// On: the client additionally performs online check-ins, periodic calls to
+/// POST /auth/heartbeat every heartbeatInterval seconds, for fast revocation
+/// and concurrent-use detection.
+///
+/// Deliberately an enum class rather than bool: a bool fourth parameter would
+/// let legacy calls such as AuthForgeClient(a, b, key, "LOCAL") silently bind
+/// through the const char* to bool standard conversion.
+enum class OnlineHeartbeat { Off, On };
+
 class AuthForgeClient {
 public:
   static constexpr const char *kDefaultApiBaseUrl = "https://auth.authforge.cc";
 
-  /// Single-key constructor preserved for source compatibility. The provided
-  /// string may also be a comma-separated trust list (current,previous) so
-  /// callers can roll a key by re-deploying with an env var change.
+  /// Single-key constructor. The provided string may also be a
+  /// comma-separated trust list (current,previous) so callers can roll a key
+  /// by re-deploying with an env var change.
+  ///
+  /// ttlSeconds requests the grace period duration in seconds for
+  /// /auth/validate (how long the app keeps running on the signed session
+  /// without contacting AuthForge). 0 means the server default (24h today);
+  /// the server clamps requested values to 1h..7d.
+  AuthForgeClient(
+      std::string appId,
+      std::string appSecret,
+      std::string publicKey,
+      OnlineHeartbeat onlineHeartbeat = OnlineHeartbeat::Off,
+      int heartbeatInterval = 900,
+      std::string apiBaseUrl = kDefaultApiBaseUrl,
+      std::function<void(const std::string &, const std::exception *)> onFailure = nullptr,
+      int requestTimeout = 15,
+      int ttlSeconds = 0,
+      std::string hwidOverride = "");
+
+  /// Rotation-aware constructor. The first entry should be the *current* key
+  /// (it is reflected back through GetPublicKey() for diagnostics);
+  /// subsequent entries are still trusted to support overlap windows.
+  ///
+  /// See the single-key constructor for the onlineHeartbeat and ttlSeconds
+  /// (grace period duration) semantics.
+  AuthForgeClient(
+      std::string appId,
+      std::string appSecret,
+      std::vector<std::string> publicKeys,
+      OnlineHeartbeat onlineHeartbeat = OnlineHeartbeat::Off,
+      int heartbeatInterval = 900,
+      std::string apiBaseUrl = kDefaultApiBaseUrl,
+      std::function<void(const std::string &, const std::exception *)> onFailure = nullptr,
+      int requestTimeout = 15,
+      int ttlSeconds = 0,
+      std::string hwidOverride = "");
+
+  /// Legacy string-mode constructor kept for source compatibility. Validates
+  /// heartbeatMode exactly as before (std::invalid_argument unless LOCAL or
+  /// SERVER, case-insensitive) and delegates to the OnlineHeartbeat overload.
+  [[deprecated("heartbeatMode strings are deprecated: LOCAL maps to the default grace period behavior (drop the argument) and SERVER maps to OnlineHeartbeat::On")]]
   AuthForgeClient(
       std::string appId,
       std::string appSecret,
@@ -49,9 +105,9 @@ public:
       int ttlSeconds = 0,
       std::string hwidOverride = "");
 
-  /// Rotation-aware constructor. The first entry should be the *current* key
-  /// (it is reflected back through GetPublicKey() for diagnostics);
-  /// subsequent entries are still trusted to support overlap windows.
+  /// Legacy string-mode rotation-aware constructor. See the deprecation note
+  /// above; delegates to the OnlineHeartbeat overload.
+  [[deprecated("heartbeatMode strings are deprecated: LOCAL maps to the default grace period behavior (drop the argument) and SERVER maps to OnlineHeartbeat::On")]]
   AuthForgeClient(
       std::string appId,
       std::string appSecret,
@@ -93,7 +149,9 @@ private:
   void StartHeartbeatOnce();
   void HeartbeatLoop() noexcept;
   void ServerHeartbeat();
-  void LocalHeartbeat();
+  /// Grace period check: re-verifies the stored signed session locally (no
+  /// network) and fails with session_expired once the grace period ends.
+  void GracePeriodCheck();
   void ValidateAndStore(const std::string &licenseKey);
   void ApplySignedResponse(
       const std::string &responseJson,
@@ -139,14 +197,16 @@ private:
   std::string appId_;
   std::string appSecret_;
   std::vector<std::string> publicKeys_;
-  std::string heartbeatMode_;
+  // True when online check-ins (periodic POST /auth/heartbeat) are enabled.
+  bool onlineHeartbeat_;
   int heartbeatInterval_;
   std::string apiBaseUrl_;
   std::function<void(const std::string &, const std::exception *)> onFailure_;
   int requestTimeout_;
-  // Requested session token lifetime in seconds for /auth/validate. 0 means
-  // "let the server pick its default" (24h today). Server clamps to
-  // [3600, 604800]; preserved across heartbeat refreshes.
+  // Requested grace period duration in seconds for /auth/validate (the
+  // session token lifetime). 0 means "let the server pick its default"
+  // (24h today). Server clamps to [3600, 604800]; preserved across
+  // heartbeat refreshes.
   int ttlSeconds_;
 
   mutable std::mutex lock_;
