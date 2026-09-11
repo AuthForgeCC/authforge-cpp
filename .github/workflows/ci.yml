@@ -37,6 +37,8 @@ jobs:
             root="${VCPKG_INSTALLATION_ROOT:-C:/vcpkg}"
             extra+=("-DCMAKE_TOOLCHAIN_FILE=${root}/scripts/buildsystems/vcpkg.cmake")
           fi
-          cmake -S . -B build -DAUTHFORGE_BUILD_VECTOR_GENERATOR=OFF "${extra[@]}"
+          cmake -S . -B build -DAUTHFORGE_BUILD_VECTOR_GENERATOR=OFF -DAUTHFORGE_BUILD_TESTS=ON "${extra[@]}"
       - name: Build
         run: cmake --build build --config Release
+      - name: Offline license file conformance (ctest)
+        run: ctest --test-dir build -C Release --output-on-failure

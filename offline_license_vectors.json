@@ -1,0 +1,257 @@
+{
+  "format": "authforge-license-file",
+  "version": 1,
+  "description": "Cross-SDK conformance vectors for offline .authforge license files. Verify order: bad_armor -> bad_signature -> unsupported_version -> malformed_payload -> wrong_app -> expired -> hwid_mismatch. Signature is Ed25519 over the UTF-8 bytes of the base64 payload string.",
+  "keys": {
+    "signingPublicKey": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=",
+    "wrongPublicKey": "PUAXw+hDiVqStwqnTRt+vJyYLM8uxJaMwM1V8Sr0Zgw=",
+    "note": "Raw 32-byte Ed25519 public keys, standard base64 - same as the dashboard shows."
+  },
+  "cases": [
+    {
+      "name": "good_bound",
+      "description": "Well-formed file, right key, right app, unexpired, HWID in bound list.",
+      "appId": "test-app",
+      "publicKey": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=",
+      "hwid": "testhwid",
+      "now": "2026-09-11T12:00:00.000Z",
+      "file": "-----BEGIN AUTHFORGE LICENSE-----\nVersion: 1\nApp-Id: test-app\nLicense: TEST-KEY0-0000-0000\nKey-Id: kid-test-0001\nExpires-At: 2027-01-01T00:00:00.000Z\n\neyJ2IjoxLCJ0eXAiOiJhdXRoZm9yZ2UtbGljZW5zZSIsImFwcElkIjoidGVzdC1h\ncHAiLCJsaWNlbnNlS2V5IjoiVEVTVC1LRVkwLTAwMDAtMDAwMCIsImp0aSI6IjAw\nMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMSIsImtpZCI6ImtpZC10\nZXN0LTAwMDEiLCJpc3N1ZWRBdCI6IjIwMjYtMDktMTFUMTE6MDA6MDAuMDAwWiIs\nImV4cGlyZXNBdCI6IjIwMjctMDEtMDFUMDA6MDA6MDAuMDAwWiIsImh3aWQiOnsi\nbW9kZSI6ImJvdW5kIiwiaHdpZHMiOlsidGVzdGh3aWQiLCJzZWNvbmQtbWFjaGlu\nZSJdfSwibGFiZWwiOiJWZWN0b3IgbGljZW5zZSIsImxpY2Vuc2VFeHBpcmVzQXQi\nOm51bGwsImxpY2Vuc2VWYXJpYWJsZXMiOnsidGllciI6InBybyIsInNlYXRzIjoz\nLCJiZXRhIjp0cnVlfSwiYXBwVmFyaWFibGVzIjp7InRoZW1lIjoiZGFyayJ9fQ==\n-----END AUTHFORGE LICENSE-----\n-----BEGIN AUTHFORGE SIGNATURE-----\nOUi4frE6lPUXqvZDs4nHvbHGsR4ZKBis6lrJjnZfPbFinPtbVBrE/pwW9F6PHJsx\nG+RbBBOIN+JN70CcDsOrAg==\n-----END AUTHFORGE SIGNATURE-----\n",
+      "expect": "ok",
+      "payloadBase64": "eyJ2IjoxLCJ0eXAiOiJhdXRoZm9yZ2UtbGljZW5zZSIsImFwcElkIjoidGVzdC1hcHAiLCJsaWNlbnNlS2V5IjoiVEVTVC1LRVkwLTAwMDAtMDAwMCIsImp0aSI6IjAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMSIsImtpZCI6ImtpZC10ZXN0LTAwMDEiLCJpc3N1ZWRBdCI6IjIwMjYtMDktMTFUMTE6MDA6MDAuMDAwWiIsImV4cGlyZXNBdCI6IjIwMjctMDEtMDFUMDA6MDA6MDAuMDAwWiIsImh3aWQiOnsibW9kZSI6ImJvdW5kIiwiaHdpZHMiOlsidGVzdGh3aWQiLCJzZWNvbmQtbWFjaGluZSJdfSwibGFiZWwiOiJWZWN0b3IgbGljZW5zZSIsImxpY2Vuc2VFeHBpcmVzQXQiOm51bGwsImxpY2Vuc2VWYXJpYWJsZXMiOnsidGllciI6InBybyIsInNlYXRzIjozLCJiZXRhIjp0cnVlfSwiYXBwVmFyaWFibGVzIjp7InRoZW1lIjoiZGFyayJ9fQ==",
+      "signatureBase64": "OUi4frE6lPUXqvZDs4nHvbHGsR4ZKBis6lrJjnZfPbFinPtbVBrE/pwW9F6PHJsxG+RbBBOIN+JN70CcDsOrAg==",
+      "payload": {
+        "v": 1,
+        "typ": "authforge-license",
+        "appId": "test-app",
+        "licenseKey": "TEST-KEY0-0000-0000",
+        "jti": "00000000-0000-4000-8000-000000000001",
+        "kid": "kid-test-0001",
+        "issuedAt": "2026-09-11T11:00:00.000Z",
+        "expiresAt": "2027-01-01T00:00:00.000Z",
+        "hwid": {
+          "mode": "bound",
+          "hwids": [
+            "testhwid",
+            "second-machine"
+          ]
+        },
+        "label": "Vector license",
+        "licenseExpiresAt": null,
+        "licenseVariables": {
+          "tier": "pro",
+          "seats": 3,
+          "beta": true
+        },
+        "appVariables": {
+          "theme": "dark"
+        }
+      }
+    },
+    {
+      "name": "good_bound_second_hwid",
+      "description": "Same file verifies on the second bound HWID.",
+      "appId": "test-app",
+      "publicKey": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=",
+      "hwid": "second-machine",
+      "now": "2026-09-11T12:00:00.000Z",
+      "file": "-----BEGIN AUTHFORGE LICENSE-----\nVersion: 1\nApp-Id: test-app\nLicense: TEST-KEY0-0000-0000\nKey-Id: kid-test-0001\nExpires-At: 2027-01-01T00:00:00.000Z\n\neyJ2IjoxLCJ0eXAiOiJhdXRoZm9yZ2UtbGljZW5zZSIsImFwcElkIjoidGVzdC1h\ncHAiLCJsaWNlbnNlS2V5IjoiVEVTVC1LRVkwLTAwMDAtMDAwMCIsImp0aSI6IjAw\nMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMSIsImtpZCI6ImtpZC10\nZXN0LTAwMDEiLCJpc3N1ZWRBdCI6IjIwMjYtMDktMTFUMTE6MDA6MDAuMDAwWiIs\nImV4cGlyZXNBdCI6IjIwMjctMDEtMDFUMDA6MDA6MDAuMDAwWiIsImh3aWQiOnsi\nbW9kZSI6ImJvdW5kIiwiaHdpZHMiOlsidGVzdGh3aWQiLCJzZWNvbmQtbWFjaGlu\nZSJdfSwibGFiZWwiOiJWZWN0b3IgbGljZW5zZSIsImxpY2Vuc2VFeHBpcmVzQXQi\nOm51bGwsImxpY2Vuc2VWYXJpYWJsZXMiOnsidGllciI6InBybyIsInNlYXRzIjoz\nLCJiZXRhIjp0cnVlfSwiYXBwVmFyaWFibGVzIjp7InRoZW1lIjoiZGFyayJ9fQ==\n-----END AUTHFORGE LICENSE-----\n-----BEGIN AUTHFORGE SIGNATURE-----\nOUi4frE6lPUXqvZDs4nHvbHGsR4ZKBis6lrJjnZfPbFinPtbVBrE/pwW9F6PHJsx\nG+RbBBOIN+JN70CcDsOrAg==\n-----END AUTHFORGE SIGNATURE-----\n",
+      "expect": "ok"
+    },
+    {
+      "name": "good_any_machine",
+      "description": "mode:any file verifies on any HWID (even an empty one).",
+      "appId": "test-app",
+      "publicKey": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=",
+      "hwid": "",
+      "now": "2026-09-11T12:00:00.000Z",
+      "file": "-----BEGIN AUTHFORGE LICENSE-----\nVersion: 1\nApp-Id: test-app\nLicense: TEST-KEY0-0000-0000\nKey-Id: kid-test-0001\nExpires-At: 2027-01-01T00:00:00.000Z\n\neyJ2IjoxLCJ0eXAiOiJhdXRoZm9yZ2UtbGljZW5zZSIsImFwcElkIjoidGVzdC1h\ncHAiLCJsaWNlbnNlS2V5IjoiVEVTVC1LRVkwLTAwMDAtMDAwMCIsImp0aSI6IjAw\nMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMiIsImtpZCI6ImtpZC10\nZXN0LTAwMDEiLCJpc3N1ZWRBdCI6IjIwMjYtMDktMTFUMTE6MDA6MDAuMDAwWiIs\nImV4cGlyZXNBdCI6IjIwMjctMDEtMDFUMDA6MDA6MDAuMDAwWiIsImh3aWQiOnsi\nbW9kZSI6ImFueSJ9LCJsYWJlbCI6IlZlY3RvciBsaWNlbnNlIiwibGljZW5zZUV4\ncGlyZXNBdCI6bnVsbCwibGljZW5zZVZhcmlhYmxlcyI6eyJ0aWVyIjoicHJvIiwi\nc2VhdHMiOjMsImJldGEiOnRydWV9LCJhcHBWYXJpYWJsZXMiOnsidGhlbWUiOiJk\nYXJrIn19\n-----END AUTHFORGE LICENSE-----\n-----BEGIN AUTHFORGE SIGNATURE-----\nNanONO7Zy+y60Kkf3mmGK1wnXn+qi4Pdn90aPV7gc9v/l3r2j2uJafpbR+Nb+duo\ntFvlZgcQK/gVToh9OMF2Aw==\n-----END AUTHFORGE SIGNATURE-----\n",
+      "expect": "ok"
+    },
+    {
+      "name": "good_lifetime",
+      "description": "expiresAt:null never expires.",
+      "appId": "test-app",
+      "publicKey": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=",
+      "hwid": "testhwid",
+      "now": "2099-01-01T00:00:00.000Z",
+      "file": "-----BEGIN AUTHFORGE LICENSE-----\nVersion: 1\nApp-Id: test-app\nLicense: TEST-KEY0-0000-0000\nKey-Id: kid-test-0001\nExpires-At: never\n\neyJ2IjoxLCJ0eXAiOiJhdXRoZm9yZ2UtbGljZW5zZSIsImFwcElkIjoidGVzdC1h\ncHAiLCJsaWNlbnNlS2V5IjoiVEVTVC1LRVkwLTAwMDAtMDAwMCIsImp0aSI6IjAw\nMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMyIsImtpZCI6ImtpZC10\nZXN0LTAwMDEiLCJpc3N1ZWRBdCI6IjIwMjYtMDktMTFUMTE6MDA6MDAuMDAwWiIs\nImV4cGlyZXNBdCI6bnVsbCwiaHdpZCI6eyJtb2RlIjoiYm91bmQiLCJod2lkcyI6\nWyJ0ZXN0aHdpZCIsInNlY29uZC1tYWNoaW5lIl19LCJsYWJlbCI6IlZlY3RvciBs\naWNlbnNlIiwibGljZW5zZUV4cGlyZXNBdCI6bnVsbCwibGljZW5zZVZhcmlhYmxl\ncyI6eyJ0aWVyIjoicHJvIiwic2VhdHMiOjMsImJldGEiOnRydWV9LCJhcHBWYXJp\nYWJsZXMiOnsidGhlbWUiOiJkYXJrIn19\n-----END AUTHFORGE LICENSE-----\n-----BEGIN AUTHFORGE SIGNATURE-----\n+YalsvgRYoEUrZhvXVCnsm3OiqZpkmFOjfuJFZCTvYNRASRcrUF8pgXOSUWrsgqc\n+KlcXTsPJNaILryjQdKPAQ==\n-----END AUTHFORGE SIGNATURE-----\n",
+      "expect": "ok"
+    },
+    {
+      "name": "good_minimal_payload",
+      "description": "Optional fields absent; still valid.",
+      "appId": "test-app",
+      "publicKey": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=",
+      "hwid": "testhwid",
+      "now": "2026-09-11T12:00:00.000Z",
+      "file": "-----BEGIN AUTHFORGE LICENSE-----\nVersion: 1\nApp-Id: test-app\nLicense: TEST-KEY0-0000-0000\nKey-Id: kid-test-0001\nExpires-At: 2027-01-01T00:00:00.000Z\n\neyJ2IjoxLCJ0eXAiOiJhdXRoZm9yZ2UtbGljZW5zZSIsImFwcElkIjoidGVzdC1h\ncHAiLCJsaWNlbnNlS2V5IjoiVEVTVC1LRVkwLTAwMDAtMDAwMCIsImp0aSI6IjAw\nMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwOCIsImtpZCI6ImtpZC10\nZXN0LTAwMDEiLCJpc3N1ZWRBdCI6IjIwMjYtMDktMTFUMTE6MDA6MDAuMDAwWiIs\nImV4cGlyZXNBdCI6IjIwMjctMDEtMDFUMDA6MDA6MDAuMDAwWiIsImh3aWQiOnsi\nbW9kZSI6ImJvdW5kIiwiaHdpZHMiOlsidGVzdGh3aWQiXX19\n-----END AUTHFORGE LICENSE-----\n-----BEGIN AUTHFORGE SIGNATURE-----\n/sdBxdSl13mXSrB517PHP6PHd9ZtIjWcXLdlSR1IwP/AWTWBBxpnsznvSQ+WH3d9\nLKfJJSWvddda4gzj5TuNBQ==\n-----END AUTHFORGE SIGNATURE-----\n",
+      "expect": "ok"
+    },
+    {
+      "name": "good_crlf_rewrapped_with_junk",
+      "description": "CRLF line endings, body re-wrapped at 17 columns, BOM and text around the armor.",
+      "appId": "test-app",
+      "publicKey": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=",
+      "hwid": "testhwid",
+      "now": "2026-09-11T12:00:00.000Z",
+      "file": "﻿Forwarded license file\r\n-----BEGIN AUTHFORGE LICENSE-----\r\nVersion: 1\r\nApp-Id: test-app\r\nLicense: TEST-KEY0-0000-0000\r\nKey-Id: kid-test-0001\r\nExpires-At: 2027-01-01T00:00:00.000Z\r\n\r\neyJ2IjoxLCJ0eXAiO\r\niJhdXRoZm9yZ2UtbG\r\nljZW5zZSIsImFwcEl\r\nkIjoidGVzdC1h\r\ncHAiLCJsaWNlbnNlS\r\n2V5IjoiVEVTVC1LRV\r\nkwLTAwMDAtMDAwMCI\r\nsImp0aSI6IjAw\r\nMDAwMDAwLTAwMDAtN\r\nDAwMC04MDAwLTAwMD\r\nAwMDAwMDAwMSIsImt\r\npZCI6ImtpZC10\r\nZXN0LTAwMDEiLCJpc\r\n3N1ZWRBdCI6IjIwMj\r\nYtMDktMTFUMTE6MDA\r\n6MDAuMDAwWiIs\r\nImV4cGlyZXNBdCI6I\r\njIwMjctMDEtMDFUMD\r\nA6MDA6MDAuMDAwWiI\r\nsImh3aWQiOnsi\r\nbW9kZSI6ImJvdW5kI\r\niwiaHdpZHMiOlsidG\r\nVzdGh3aWQiLCJzZWN\r\nvbmQtbWFjaGlu\r\nZSJdfSwibGFiZWwiO\r\niJWZWN0b3IgbGljZW\r\n5zZSIsImxpY2Vuc2V\r\nFeHBpcmVzQXQi\r\nOm51bGwsImxpY2Vuc\r\n2VWYXJpYWJsZXMiOn\r\nsidGllciI6InBybyI\r\nsInNlYXRzIjoz\r\nLCJiZXRhIjp0cnVlf\r\nSwiYXBwVmFyaWFibG\r\nVzIjp7InRoZW1lIjo\r\niZGFyayJ9fQ==\r\n-----END AUTHFORGE LICENSE-----\r\n-----BEGIN AUTHFORGE SIGNATURE-----\r\nOUi4frE6lPUXqvZDs\r\n4nHvbHGsR4ZKBis6l\r\nrJjnZfPbFinPtbVBr\r\nE/pwW9F6PHJsx\r\nG+RbBBOIN+JN70CcD\r\nsOrAg==\r\n-----END AUTHFORGE SIGNATURE-----\r\n\r\n-- end --\r\n",
+      "expect": "ok"
+    },
+    {
+      "name": "good_key_rotation_list",
+      "description": "Public key list where only the second entry matches.",
+      "appId": "test-app",
+      "publicKey": "PUAXw+hDiVqStwqnTRt+vJyYLM8uxJaMwM1V8Sr0Zgw=,11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=",
+      "hwid": "testhwid",
+      "now": "2026-09-11T12:00:00.000Z",
+      "file": "-----BEGIN AUTHFORGE LICENSE-----\nVersion: 1\nApp-Id: test-app\nLicense: TEST-KEY0-0000-0000\nKey-Id: kid-test-0001\nExpires-At: 2027-01-01T00:00:00.000Z\n\neyJ2IjoxLCJ0eXAiOiJhdXRoZm9yZ2UtbGljZW5zZSIsImFwcElkIjoidGVzdC1h\ncHAiLCJsaWNlbnNlS2V5IjoiVEVTVC1LRVkwLTAwMDAtMDAwMCIsImp0aSI6IjAw\nMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMSIsImtpZCI6ImtpZC10\nZXN0LTAwMDEiLCJpc3N1ZWRBdCI6IjIwMjYtMDktMTFUMTE6MDA6MDAuMDAwWiIs\nImV4cGlyZXNBdCI6IjIwMjctMDEtMDFUMDA6MDA6MDAuMDAwWiIsImh3aWQiOnsi\nbW9kZSI6ImJvdW5kIiwiaHdpZHMiOlsidGVzdGh3aWQiLCJzZWNvbmQtbWFjaGlu\nZSJdfSwibGFiZWwiOiJWZWN0b3IgbGljZW5zZSIsImxpY2Vuc2VFeHBpcmVzQXQi\nOm51bGwsImxpY2Vuc2VWYXJpYWJsZXMiOnsidGllciI6InBybyIsInNlYXRzIjoz\nLCJiZXRhIjp0cnVlfSwiYXBwVmFyaWFibGVzIjp7InRoZW1lIjoiZGFyayJ9fQ==\n-----END AUTHFORGE LICENSE-----\n-----BEGIN AUTHFORGE SIGNATURE-----\nOUi4frE6lPUXqvZDs4nHvbHGsR4ZKBis6lrJjnZfPbFinPtbVBrE/pwW9F6PHJsx\nG+RbBBOIN+JN70CcDsOrAg==\n-----END AUTHFORGE SIGNATURE-----\n",
+      "expect": "ok"
+    },
+    {
+      "name": "bad_signature_tampered_body",
+      "description": "One base64 character flipped in the payload body.",
+      "appId": "test-app",
+      "publicKey": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=",
+      "hwid": "testhwid",
+      "now": "2026-09-11T12:00:00.000Z",
+      "file": "-----BEGIN AUTHFORGE LICENSE-----\nVersion: 1\nApp-Id: test-app\nLicense: TEST-KEY0-0000-0000\nKey-Id: kid-test-0001\nExpires-At: 2027-01-01T00:00:00.000Z\n\neyJ2IjoxLCA0eXAiOiJhdXRoZm9yZ2UtbGljZW5zZSIsImFwcElkIjoidGVzdC1h\ncHAiLCJsaWNlbnNlS2V5IjoiVEVTVC1LRVkwLTAwMDAtMDAwMCIsImp0aSI6IjAw\nMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMSIsImtpZCI6ImtpZC10\nZXN0LTAwMDEiLCJpc3N1ZWRBdCI6IjIwMjYtMDktMTFUMTE6MDA6MDAuMDAwWiIs\nImV4cGlyZXNBdCI6IjIwMjctMDEtMDFUMDA6MDA6MDAuMDAwWiIsImh3aWQiOnsi\nbW9kZSI6ImJvdW5kIiwiaHdpZHMiOlsidGVzdGh3aWQiLCJzZWNvbmQtbWFjaGlu\nZSJdfSwibGFiZWwiOiJWZWN0b3IgbGljZW5zZSIsImxpY2Vuc2VFeHBpcmVzQXQi\nOm51bGwsImxpY2Vuc2VWYXJpYWJsZXMiOnsidGllciI6InBybyIsInNlYXRzIjoz\nLCJiZXRhIjp0cnVlfSwiYXBwVmFyaWFibGVzIjp7InRoZW1lIjoiZGFyayJ9fQ==\n-----END AUTHFORGE LICENSE-----\n-----BEGIN AUTHFORGE SIGNATURE-----\nOUi4frE6lPUXqvZDs4nHvbHGsR4ZKBis6lrJjnZfPbFinPtbVBrE/pwW9F6PHJsx\nG+RbBBOIN+JN70CcDsOrAg==\n-----END AUTHFORGE SIGNATURE-----\n",
+      "expect": "bad_signature"
+    },
+    {
+      "name": "bad_signature_wrong_key",
+      "description": "Signed by a different (wrong) app key.",
+      "appId": "test-app",
+      "publicKey": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=",
+      "hwid": "testhwid",
+      "now": "2026-09-11T12:00:00.000Z",
+      "file": "-----BEGIN AUTHFORGE LICENSE-----\nVersion: 1\nApp-Id: test-app\nLicense: TEST-KEY0-0000-0000\nKey-Id: kid-test-0001\nExpires-At: 2027-01-01T00:00:00.000Z\n\neyJ2IjoxLCJ0eXAiOiJhdXRoZm9yZ2UtbGljZW5zZSIsImFwcElkIjoidGVzdC1h\ncHAiLCJsaWNlbnNlS2V5IjoiVEVTVC1LRVkwLTAwMDAtMDAwMCIsImp0aSI6IjAw\nMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwNiIsImtpZCI6ImtpZC10\nZXN0LTAwMDEiLCJpc3N1ZWRBdCI6IjIwMjYtMDktMTFUMTE6MDA6MDAuMDAwWiIs\nImV4cGlyZXNBdCI6IjIwMjctMDEtMDFUMDA6MDA6MDAuMDAwWiIsImh3aWQiOnsi\nbW9kZSI6ImJvdW5kIiwiaHdpZHMiOlsidGVzdGh3aWQiLCJzZWNvbmQtbWFjaGlu\nZSJdfSwibGFiZWwiOiJWZWN0b3IgbGljZW5zZSIsImxpY2Vuc2VFeHBpcmVzQXQi\nOm51bGwsImxpY2Vuc2VWYXJpYWJsZXMiOnsidGllciI6InBybyIsInNlYXRzIjoz\nLCJiZXRhIjp0cnVlfSwiYXBwVmFyaWFibGVzIjp7InRoZW1lIjoiZGFyayJ9fQ==\n-----END AUTHFORGE LICENSE-----\n-----BEGIN AUTHFORGE SIGNATURE-----\niqmGNVtLztpzfqJuynrxPXiSYD2TePzv+K/95G/IsLMGyZQEozBmNWqWcK0sfRxR\noOGUdh8yXWpofu/Ujel4AA==\n-----END AUTHFORGE SIGNATURE-----\n",
+      "expect": "bad_signature"
+    },
+    {
+      "name": "bad_signature_verifier_has_wrong_key",
+      "description": "Good file, but the verifier is configured with the wrong public key.",
+      "appId": "test-app",
+      "publicKey": "PUAXw+hDiVqStwqnTRt+vJyYLM8uxJaMwM1V8Sr0Zgw=",
+      "hwid": "testhwid",
+      "now": "2026-09-11T12:00:00.000Z",
+      "file": "-----BEGIN AUTHFORGE LICENSE-----\nVersion: 1\nApp-Id: test-app\nLicense: TEST-KEY0-0000-0000\nKey-Id: kid-test-0001\nExpires-At: 2027-01-01T00:00:00.000Z\n\neyJ2IjoxLCJ0eXAiOiJhdXRoZm9yZ2UtbGljZW5zZSIsImFwcElkIjoidGVzdC1h\ncHAiLCJsaWNlbnNlS2V5IjoiVEVTVC1LRVkwLTAwMDAtMDAwMCIsImp0aSI6IjAw\nMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMSIsImtpZCI6ImtpZC10\nZXN0LTAwMDEiLCJpc3N1ZWRBdCI6IjIwMjYtMDktMTFUMTE6MDA6MDAuMDAwWiIs\nImV4cGlyZXNBdCI6IjIwMjctMDEtMDFUMDA6MDA6MDAuMDAwWiIsImh3aWQiOnsi\nbW9kZSI6ImJvdW5kIiwiaHdpZHMiOlsidGVzdGh3aWQiLCJzZWNvbmQtbWFjaGlu\nZSJdfSwibGFiZWwiOiJWZWN0b3IgbGljZW5zZSIsImxpY2Vuc2VFeHBpcmVzQXQi\nOm51bGwsImxpY2Vuc2VWYXJpYWJsZXMiOnsidGllciI6InBybyIsInNlYXRzIjoz\nLCJiZXRhIjp0cnVlfSwiYXBwVmFyaWFibGVzIjp7InRoZW1lIjoiZGFyayJ9fQ==\n-----END AUTHFORGE LICENSE-----\n-----BEGIN AUTHFORGE SIGNATURE-----\nOUi4frE6lPUXqvZDs4nHvbHGsR4ZKBis6lrJjnZfPbFinPtbVBrE/pwW9F6PHJsx\nG+RbBBOIN+JN70CcDsOrAg==\n-----END AUTHFORGE SIGNATURE-----\n",
+      "expect": "bad_signature"
+    },
+    {
+      "name": "wrong_app",
+      "description": "Valid signature but payload appId differs from the configured app.",
+      "appId": "test-app",
+      "publicKey": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=",
+      "hwid": "testhwid",
+      "now": "2026-09-11T12:00:00.000Z",
+      "file": "-----BEGIN AUTHFORGE LICENSE-----\nVersion: 1\nApp-Id: other-app\nLicense: TEST-KEY0-0000-0000\nKey-Id: kid-test-0001\nExpires-At: 2027-01-01T00:00:00.000Z\n\neyJ2IjoxLCJ0eXAiOiJhdXRoZm9yZ2UtbGljZW5zZSIsImFwcElkIjoib3RoZXIt\nYXBwIiwibGljZW5zZUtleSI6IlRFU1QtS0VZMC0wMDAwLTAwMDAiLCJqdGkiOiIw\nMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDUiLCJraWQiOiJraWQt\ndGVzdC0wMDAxIiwiaXNzdWVkQXQiOiIyMDI2LTA5LTExVDExOjAwOjAwLjAwMFoi\nLCJleHBpcmVzQXQiOiIyMDI3LTAxLTAxVDAwOjAwOjAwLjAwMFoiLCJod2lkIjp7\nIm1vZGUiOiJib3VuZCIsImh3aWRzIjpbInRlc3Rod2lkIiwic2Vjb25kLW1hY2hp\nbmUiXX0sImxhYmVsIjoiVmVjdG9yIGxpY2Vuc2UiLCJsaWNlbnNlRXhwaXJlc0F0\nIjpudWxsLCJsaWNlbnNlVmFyaWFibGVzIjp7InRpZXIiOiJwcm8iLCJzZWF0cyI6\nMywiYmV0YSI6dHJ1ZX0sImFwcFZhcmlhYmxlcyI6eyJ0aGVtZSI6ImRhcmsifX0=\n-----END AUTHFORGE LICENSE-----\n-----BEGIN AUTHFORGE SIGNATURE-----\nxJQ7RGIoDNrlnwovTzG/CEzNbSJCShBmZx4R7V8PHb36+FIOeI94HMQCMiASioj8\nPLntdSsFCltC738e77veDw==\n-----END AUTHFORGE SIGNATURE-----\n",
+      "expect": "wrong_app"
+    },
+    {
+      "name": "expired",
+      "description": "expiresAt one second before now.",
+      "appId": "test-app",
+      "publicKey": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=",
+      "hwid": "testhwid",
+      "now": "2026-09-11T12:00:00.000Z",
+      "file": "-----BEGIN AUTHFORGE LICENSE-----\nVersion: 1\nApp-Id: test-app\nLicense: TEST-KEY0-0000-0000\nKey-Id: kid-test-0001\nExpires-At: 2026-09-11T11:59:59.000Z\n\neyJ2IjoxLCJ0eXAiOiJhdXRoZm9yZ2UtbGljZW5zZSIsImFwcElkIjoidGVzdC1h\ncHAiLCJsaWNlbnNlS2V5IjoiVEVTVC1LRVkwLTAwMDAtMDAwMCIsImp0aSI6IjAw\nMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwNCIsImtpZCI6ImtpZC10\nZXN0LTAwMDEiLCJpc3N1ZWRBdCI6IjIwMjYtMDktMTFUMTE6MDA6MDAuMDAwWiIs\nImV4cGlyZXNBdCI6IjIwMjYtMDktMTFUMTE6NTk6NTkuMDAwWiIsImh3aWQiOnsi\nbW9kZSI6ImJvdW5kIiwiaHdpZHMiOlsidGVzdGh3aWQiLCJzZWNvbmQtbWFjaGlu\nZSJdfSwibGFiZWwiOiJWZWN0b3IgbGljZW5zZSIsImxpY2Vuc2VFeHBpcmVzQXQi\nOm51bGwsImxpY2Vuc2VWYXJpYWJsZXMiOnsidGllciI6InBybyIsInNlYXRzIjoz\nLCJiZXRhIjp0cnVlfSwiYXBwVmFyaWFibGVzIjp7InRoZW1lIjoiZGFyayJ9fQ==\n-----END AUTHFORGE LICENSE-----\n-----BEGIN AUTHFORGE SIGNATURE-----\nPRz6AXrbuJbrfAnZvxd/wp1ARQlPb5+hVQcoioUPUH8tJYZaIiJ6OjOi7YMp4hsN\ncjhTSNDLh5HESl/MXMTYCA==\n-----END AUTHFORGE SIGNATURE-----\n",
+      "expect": "expired"
+    },
+    {
+      "name": "expired_exactly_now",
+      "description": "expiresAt == now is expired (strict).",
+      "appId": "test-app",
+      "publicKey": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=",
+      "hwid": "testhwid",
+      "now": "2027-01-01T00:00:00.000Z",
+      "file": "-----BEGIN AUTHFORGE LICENSE-----\nVersion: 1\nApp-Id: test-app\nLicense: TEST-KEY0-0000-0000\nKey-Id: kid-test-0001\nExpires-At: 2027-01-01T00:00:00.000Z\n\neyJ2IjoxLCJ0eXAiOiJhdXRoZm9yZ2UtbGljZW5zZSIsImFwcElkIjoidGVzdC1h\ncHAiLCJsaWNlbnNlS2V5IjoiVEVTVC1LRVkwLTAwMDAtMDAwMCIsImp0aSI6IjAw\nMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMSIsImtpZCI6ImtpZC10\nZXN0LTAwMDEiLCJpc3N1ZWRBdCI6IjIwMjYtMDktMTFUMTE6MDA6MDAuMDAwWiIs\nImV4cGlyZXNBdCI6IjIwMjctMDEtMDFUMDA6MDA6MDAuMDAwWiIsImh3aWQiOnsi\nbW9kZSI6ImJvdW5kIiwiaHdpZHMiOlsidGVzdGh3aWQiLCJzZWNvbmQtbWFjaGlu\nZSJdfSwibGFiZWwiOiJWZWN0b3IgbGljZW5zZSIsImxpY2Vuc2VFeHBpcmVzQXQi\nOm51bGwsImxpY2Vuc2VWYXJpYWJsZXMiOnsidGllciI6InBybyIsInNlYXRzIjoz\nLCJiZXRhIjp0cnVlfSwiYXBwVmFyaWFibGVzIjp7InRoZW1lIjoiZGFyayJ9fQ==\n-----END AUTHFORGE LICENSE-----\n-----BEGIN AUTHFORGE SIGNATURE-----\nOUi4frE6lPUXqvZDs4nHvbHGsR4ZKBis6lrJjnZfPbFinPtbVBrE/pwW9F6PHJsx\nG+RbBBOIN+JN70CcDsOrAg==\n-----END AUTHFORGE SIGNATURE-----\n",
+      "expect": "expired"
+    },
+    {
+      "name": "hwid_mismatch",
+      "description": "Local HWID not in the bound list.",
+      "appId": "test-app",
+      "publicKey": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=",
+      "hwid": "otherhwid",
+      "now": "2026-09-11T12:00:00.000Z",
+      "file": "-----BEGIN AUTHFORGE LICENSE-----\nVersion: 1\nApp-Id: test-app\nLicense: TEST-KEY0-0000-0000\nKey-Id: kid-test-0001\nExpires-At: 2027-01-01T00:00:00.000Z\n\neyJ2IjoxLCJ0eXAiOiJhdXRoZm9yZ2UtbGljZW5zZSIsImFwcElkIjoidGVzdC1h\ncHAiLCJsaWNlbnNlS2V5IjoiVEVTVC1LRVkwLTAwMDAtMDAwMCIsImp0aSI6IjAw\nMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMSIsImtpZCI6ImtpZC10\nZXN0LTAwMDEiLCJpc3N1ZWRBdCI6IjIwMjYtMDktMTFUMTE6MDA6MDAuMDAwWiIs\nImV4cGlyZXNBdCI6IjIwMjctMDEtMDFUMDA6MDA6MDAuMDAwWiIsImh3aWQiOnsi\nbW9kZSI6ImJvdW5kIiwiaHdpZHMiOlsidGVzdGh3aWQiLCJzZWNvbmQtbWFjaGlu\nZSJdfSwibGFiZWwiOiJWZWN0b3IgbGljZW5zZSIsImxpY2Vuc2VFeHBpcmVzQXQi\nOm51bGwsImxpY2Vuc2VWYXJpYWJsZXMiOnsidGllciI6InBybyIsInNlYXRzIjoz\nLCJiZXRhIjp0cnVlfSwiYXBwVmFyaWFibGVzIjp7InRoZW1lIjoiZGFyayJ9fQ==\n-----END AUTHFORGE LICENSE-----\n-----BEGIN AUTHFORGE SIGNATURE-----\nOUi4frE6lPUXqvZDs4nHvbHGsR4ZKBis6lrJjnZfPbFinPtbVBrE/pwW9F6PHJsx\nG+RbBBOIN+JN70CcDsOrAg==\n-----END AUTHFORGE SIGNATURE-----\n",
+      "expect": "hwid_mismatch"
+    },
+    {
+      "name": "hwid_mismatch_empty_hwid",
+      "description": "Bound file with an empty local HWID is a mismatch.",
+      "appId": "test-app",
+      "publicKey": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=",
+      "hwid": "",
+      "now": "2026-09-11T12:00:00.000Z",
+      "file": "-----BEGIN AUTHFORGE LICENSE-----\nVersion: 1\nApp-Id: test-app\nLicense: TEST-KEY0-0000-0000\nKey-Id: kid-test-0001\nExpires-At: 2027-01-01T00:00:00.000Z\n\neyJ2IjoxLCJ0eXAiOiJhdXRoZm9yZ2UtbGljZW5zZSIsImFwcElkIjoidGVzdC1h\ncHAiLCJsaWNlbnNlS2V5IjoiVEVTVC1LRVkwLTAwMDAtMDAwMCIsImp0aSI6IjAw\nMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMSIsImtpZCI6ImtpZC10\nZXN0LTAwMDEiLCJpc3N1ZWRBdCI6IjIwMjYtMDktMTFUMTE6MDA6MDAuMDAwWiIs\nImV4cGlyZXNBdCI6IjIwMjctMDEtMDFUMDA6MDA6MDAuMDAwWiIsImh3aWQiOnsi\nbW9kZSI6ImJvdW5kIiwiaHdpZHMiOlsidGVzdGh3aWQiLCJzZWNvbmQtbWFjaGlu\nZSJdfSwibGFiZWwiOiJWZWN0b3IgbGljZW5zZSIsImxpY2Vuc2VFeHBpcmVzQXQi\nOm51bGwsImxpY2Vuc2VWYXJpYWJsZXMiOnsidGllciI6InBybyIsInNlYXRzIjoz\nLCJiZXRhIjp0cnVlfSwiYXBwVmFyaWFibGVzIjp7InRoZW1lIjoiZGFyayJ9fQ==\n-----END AUTHFORGE LICENSE-----\n-----BEGIN AUTHFORGE SIGNATURE-----\nOUi4frE6lPUXqvZDs4nHvbHGsR4ZKBis6lrJjnZfPbFinPtbVBrE/pwW9F6PHJsx\nG+RbBBOIN+JN70CcDsOrAg==\n-----END AUTHFORGE SIGNATURE-----\n",
+      "expect": "hwid_mismatch"
+    },
+    {
+      "name": "unsupported_version",
+      "description": "Signed payload declares v:2.",
+      "appId": "test-app",
+      "publicKey": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=",
+      "hwid": "testhwid",
+      "now": "2026-09-11T12:00:00.000Z",
+      "file": "-----BEGIN AUTHFORGE LICENSE-----\nVersion: 1\nApp-Id: test-app\nLicense: TEST-KEY0-0000-0000\nKey-Id: kid-test-0001\nExpires-At: 2027-01-01T00:00:00.000Z\n\neyJ2IjoyLCJ0eXAiOiJhdXRoZm9yZ2UtbGljZW5zZSIsImFwcElkIjoidGVzdC1h\ncHAiLCJsaWNlbnNlS2V5IjoiVEVTVC1LRVkwLTAwMDAtMDAwMCIsImp0aSI6IjAw\nMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwNyIsImtpZCI6ImtpZC10\nZXN0LTAwMDEiLCJpc3N1ZWRBdCI6IjIwMjYtMDktMTFUMTE6MDA6MDAuMDAwWiIs\nImV4cGlyZXNBdCI6IjIwMjctMDEtMDFUMDA6MDA6MDAuMDAwWiIsImh3aWQiOnsi\nbW9kZSI6ImJvdW5kIiwiaHdpZHMiOlsidGVzdGh3aWQiLCJzZWNvbmQtbWFjaGlu\nZSJdfSwibGFiZWwiOiJWZWN0b3IgbGljZW5zZSIsImxpY2Vuc2VFeHBpcmVzQXQi\nOm51bGwsImxpY2Vuc2VWYXJpYWJsZXMiOnsidGllciI6InBybyIsInNlYXRzIjoz\nLCJiZXRhIjp0cnVlfSwiYXBwVmFyaWFibGVzIjp7InRoZW1lIjoiZGFyayJ9fQ==\n-----END AUTHFORGE LICENSE-----\n-----BEGIN AUTHFORGE SIGNATURE-----\nHqiY7dONmgqjoJGdYVfkObnPBoHL+DwIgpVmpJ5LIasAH0mv2TRy9hgmSCMyi1kp\nUDE4OS0mcchHnQVFM6UeCg==\n-----END AUTHFORGE SIGNATURE-----\n",
+      "expect": "unsupported_version"
+    },
+    {
+      "name": "unsupported_version_bool",
+      "description": "Signed payload declares v:true. JSON booleans are not version numbers even where true == 1 (Python).",
+      "appId": "test-app",
+      "publicKey": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=",
+      "hwid": "testhwid",
+      "now": "2026-09-11T12:00:00.000Z",
+      "file": "-----BEGIN AUTHFORGE LICENSE-----\nVersion: 1\nApp-Id: test-app\nLicense: TEST-KEY0-0000-0000\nKey-Id: kid-test-0001\nExpires-At: 2027-01-01T00:00:00.000Z\n\neyJ2Ijp0cnVlLCJ0eXAiOiJhdXRoZm9yZ2UtbGljZW5zZSIsImFwcElkIjoidGVz\ndC1hcHAiLCJsaWNlbnNlS2V5IjoiVEVTVC1LRVkwLTAwMDAtMDAwMCIsImp0aSI6\nIjAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwYSIsImtpZCI6Imtp\nZC10ZXN0LTAwMDEiLCJpc3N1ZWRBdCI6IjIwMjYtMDktMTFUMTE6MDA6MDAuMDAw\nWiIsImV4cGlyZXNBdCI6IjIwMjctMDEtMDFUMDA6MDA6MDAuMDAwWiIsImh3aWQi\nOnsibW9kZSI6ImJvdW5kIiwiaHdpZHMiOlsidGVzdGh3aWQiLCJzZWNvbmQtbWFj\naGluZSJdfSwibGFiZWwiOiJWZWN0b3IgbGljZW5zZSIsImxpY2Vuc2VFeHBpcmVz\nQXQiOm51bGwsImxpY2Vuc2VWYXJpYWJsZXMiOnsidGllciI6InBybyIsInNlYXRz\nIjozLCJiZXRhIjp0cnVlfSwiYXBwVmFyaWFibGVzIjp7InRoZW1lIjoiZGFyayJ9\nfQ==\n-----END AUTHFORGE LICENSE-----\n-----BEGIN AUTHFORGE SIGNATURE-----\nOFKB8Cris/mAgpTERDIOVLBNNGqelO3G0fbUBJuw3qrGeMhtIKbQvWuDintCSj2M\nWUuoFX5uNSti5jrvaSfCDQ==\n-----END AUTHFORGE SIGNATURE-----\n",
+      "expect": "unsupported_version"
+    },
+    {
+      "name": "malformed_payload_missing_expires_at",
+      "description": "Well-signed v1 payload with no expiresAt field (null would mean lifetime; absence is malformed).",
+      "appId": "test-app",
+      "publicKey": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=",
+      "hwid": "testhwid",
+      "now": "2026-09-11T12:00:00.000Z",
+      "file": "-----BEGIN AUTHFORGE LICENSE-----\nVersion: 1\nApp-Id: test-app\nLicense: TEST-KEY0-0000-0000\nKey-Id: kid-test-0001\nExpires-At: undefined\n\neyJ2IjoxLCJ0eXAiOiJhdXRoZm9yZ2UtbGljZW5zZSIsImFwcElkIjoidGVzdC1h\ncHAiLCJsaWNlbnNlS2V5IjoiVEVTVC1LRVkwLTAwMDAtMDAwMCIsImp0aSI6IjAw\nMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwOSIsImtpZCI6ImtpZC10\nZXN0LTAwMDEiLCJpc3N1ZWRBdCI6IjIwMjYtMDktMTFUMTE6MDA6MDAuMDAwWiIs\nImh3aWQiOnsibW9kZSI6ImFueSJ9fQ==\n-----END AUTHFORGE LICENSE-----\n-----BEGIN AUTHFORGE SIGNATURE-----\n2F+TnVTG9EVEZyp9nsvr6BKN6tPAualnEoE3ZlqKv7lBDHK/4r9XvzLJ6DDQQUFy\nFpplK80nWpy4ANZ/mR3UAg==\n-----END AUTHFORGE SIGNATURE-----\n",
+      "expect": "malformed_payload"
+    },
+    {
+      "name": "bad_armor_garbage",
+      "appId": "test-app",
+      "publicKey": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=",
+      "hwid": "testhwid",
+      "now": "2026-09-11T12:00:00.000Z",
+      "file": "this is not a license file",
+      "expect": "bad_armor"
+    },
+    {
+      "name": "bad_armor_missing_signature_block",
+      "appId": "test-app",
+      "publicKey": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=",
+      "hwid": "testhwid",
+      "now": "2026-09-11T12:00:00.000Z",
+      "file": "-----BEGIN AUTHFORGE LICENSE-----\nVersion: 1\nApp-Id: test-app\nLicense: TEST-KEY0-0000-0000\nKey-Id: kid-test-0001\nExpires-At: 2027-01-01T00:00:00.000Z\n\neyJ2IjoxLCJ0eXAiOiJhdXRoZm9yZ2UtbGljZW5zZSIsImFwcElkIjoidGVzdC1h\ncHAiLCJsaWNlbnNlS2V5IjoiVEVTVC1LRVkwLTAwMDAtMDAwMCIsImp0aSI6IjAw\nMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMSIsImtpZCI6ImtpZC10\nZXN0LTAwMDEiLCJpc3N1ZWRBdCI6IjIwMjYtMDktMTFUMTE6MDA6MDAuMDAwWiIs\nImV4cGlyZXNBdCI6IjIwMjctMDEtMDFUMDA6MDA6MDAuMDAwWiIsImh3aWQiOnsi\nbW9kZSI6ImJvdW5kIiwiaHdpZHMiOlsidGVzdGh3aWQiLCJzZWNvbmQtbWFjaGlu\nZSJdfSwibGFiZWwiOiJWZWN0b3IgbGljZW5zZSIsImxpY2Vuc2VFeHBpcmVzQXQi\nOm51bGwsImxpY2Vuc2VWYXJpYWJsZXMiOnsidGllciI6InBybyIsInNlYXRzIjoz\nLCJiZXRhIjp0cnVlfSwiYXBwVmFyaWFibGVzIjp7InRoZW1lIjoiZGFyayJ9fQ==\n-----END AUTHFORGE LICENSE-----\n",
+      "expect": "bad_armor"
+    },
+    {
+      "name": "bad_armor_no_blank_line",
+      "appId": "test-app",
+      "publicKey": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=",
+      "hwid": "testhwid",
+      "now": "2026-09-11T12:00:00.000Z",
+      "file": "-----BEGIN AUTHFORGE LICENSE-----\nVersion: 1\nApp-Id: test-app\nLicense: TEST-KEY0-0000-0000\nKey-Id: kid-test-0001\nExpires-At: 2027-01-01T00:00:00.000Z\neyJ2IjoxLCJ0eXAiOiJhdXRoZm9yZ2UtbGljZW5zZSIsImFwcElkIjoidGVzdC1h\ncHAiLCJsaWNlbnNlS2V5IjoiVEVTVC1LRVkwLTAwMDAtMDAwMCIsImp0aSI6IjAw\nMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMSIsImtpZCI6ImtpZC10\nZXN0LTAwMDEiLCJpc3N1ZWRBdCI6IjIwMjYtMDktMTFUMTE6MDA6MDAuMDAwWiIs\nImV4cGlyZXNBdCI6IjIwMjctMDEtMDFUMDA6MDA6MDAuMDAwWiIsImh3aWQiOnsi\nbW9kZSI6ImJvdW5kIiwiaHdpZHMiOlsidGVzdGh3aWQiLCJzZWNvbmQtbWFjaGlu\nZSJdfSwibGFiZWwiOiJWZWN0b3IgbGljZW5zZSIsImxpY2Vuc2VFeHBpcmVzQXQi\nOm51bGwsImxpY2Vuc2VWYXJpYWJsZXMiOnsidGllciI6InBybyIsInNlYXRzIjoz\nLCJiZXRhIjp0cnVlfSwiYXBwVmFyaWFibGVzIjp7InRoZW1lIjoiZGFyayJ9fQ==\n-----END AUTHFORGE LICENSE-----\n-----BEGIN AUTHFORGE SIGNATURE-----\nOUi4frE6lPUXqvZDs4nHvbHGsR4ZKBis6lrJjnZfPbFinPtbVBrE/pwW9F6PHJsx\nG+RbBBOIN+JN70CcDsOrAg==\n-----END AUTHFORGE SIGNATURE-----\n",
+      "expect": "bad_armor"
+    },
+    {
+      "name": "bad_armor_empty",
+      "appId": "test-app",
+      "publicKey": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=",
+      "hwid": "testhwid",
+      "now": "2026-09-11T12:00:00.000Z",
+      "file": "",
+      "expect": "bad_armor"
+    }
+  ]
+}

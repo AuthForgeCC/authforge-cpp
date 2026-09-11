@@ -22,6 +22,7 @@ Everything in this list ships in `authforge_sdk.h` / `authforge_sdk.cpp` today:
 - **`hwidOverride`**: bind to any identity instead of the machine (for example `tg:<id>`, `discord:<id>`).
 - **Seat enforcement**: the server binds each HWID into a license's free slots up to `maxHwidSlots`; `maxHwidSlots` / `hwidCount` are surfaced on the validate result. A shared (unlimited-seat) key skips per-device binding.
 - **Grace period by default, online check-ins on demand** (see [Grace period and online check-ins](#grace-period-and-online-check-ins)).
+- **Offline license files (`.authforge`)**: `LoginFromFile()` / `VerifyLicenseFile()` verify a cloud-minted, Ed25519-signed file with zero network access for air-gapped machines.
 - **Self-ban** (`SelfBan(...)`) for anti-tamper response, both pre-session and post-session.
 - **Grace period duration control** (`ttlSeconds`) with server-side clamping to `[3600, 604800]`.
 - **App variables / license variables** for feature flags and tiered licensing.
@@ -154,6 +155,11 @@ A desktop app with online check-ins running 6h/day at a 15-minute interval burns
 | `Login(const std::string&)` | `bool` | Activates the key online and stores the signed session (`sessionToken`, `expiresIn`, `appVariables`, `licenseVariables`) |
 | `ValidateLicense(const std::string&)` | `ValidateLicenseResult` | Same `/auth/validate` + signatures as `Login`; does not persist session or start background checks; **never** calls `onFailure` or `std::exit`; inspect `valid` / `errorCode` |
 | `SelfBan(...)` | `bool` | Requests `/auth/selfban` to blacklist HWID/IP and optionally revoke (session-authenticated only) |
+| `LoginFromFile(const std::string&)` | `bool` | Authorizes from an offline `.authforge` file (path or text) with no network; never starts background checks; failures go to `onFailure("offline_login_failed", …)` |
+| `VerifyLicenseFile(const std::string&, long long nowEpochMs = 0)` | `VerifyLicenseFileResult` | Verifies a `.authforge` file with this client's app id / keys / HWID without changing state |
+| `GetOfflineLicense()` | `std::optional<OfflineLicense>` | Metadata of the offline file in use (`jti`, `expiresAt`, `hwidPolicy`, …) |
+| `GetSessionKind()` | `SessionKind` | `SessionKind::Online`, `SessionKind::Offline`, or `SessionKind::None` when logged out |
+| `GetHwid()` | `const std::string&` | The HWID this client sends (or `hwidOverride`); customers share it to receive a bound file |
 | `Logout()` | `void` | Stops background checks and clears all session/auth state |
 | `IsAuthenticated()` | `bool` | True when an active authenticated session exists |
 | `GetSessionDataJson()` | `std::optional<std::string>` | Full decoded payload JSON |
@@ -165,6 +171,44 @@ A desktop app with online check-ins running 6h/day at a 15-minute interval burns
 **Grace period (default).** After a successful online activation, the app keeps running on the Ed25519-signed session without contacting AuthForge. The background loop re-verifies the signed session locally and triggers failure with `session_expired` when the grace period ends. The grace period equals the session TTL: default 24h, and the server clamps requested values (`ttlSeconds`) to 1h to 7d. This is session continuation after one successful online activation, not persistent offline licensing, and a mid-session revocation cannot take effect until the next online activation.
 
 **Online check-ins (opt-in).** Construct the client with `authforge::OnlineHeartbeat::On` and the SDK calls `/auth/heartbeat` every `heartbeatInterval` seconds with a fresh nonce, verifies signature + nonce, and triggers failure on invalid session state. Choose this for fast revocation and concurrent-use detection.
+
+## Offline license files (`.authforge`)
+
+For machines that never connect to the internet, the operator mints a **signed offline license file** in the AuthForge dashboard (License page -> *Mint .authforge file*) or via `POST /v1/licenses/{licenseKey}/offline-files`. The file is a standalone Ed25519-signed document; the SDK verifies it with **only** your app public key and the machine HWID. It never contacts AuthForge and never starts the background thread.
+
+| | Grace period (default) | Offline license file |
+| --- | --- | --- |
+| Needs network | Once, at `Login()` | Never on the end machine |
+| What is verified | Signed *session* from `/auth/validate` | Signed *document* minted in the cloud |
+| Lifetime | Session TTL: 1h to 7d | Operator-chosen expiry or lifetime (perpetual licenses only) |
+| Revocation | Picked up at the next online validate / check-in | **Not** reachable: the file stays valid until its own expiry |
+| Cost | 1 credit per `Login()` | 1 credit per mint; verifying is free |
+
+```cpp
+authforge::AuthForgeClient client(
+    "YOUR_APP_ID",
+    "YOUR_APP_SECRET",  // unused for offline files but still required by the constructor
+    "YOUR_PUBLIC_KEY",
+    authforge::OnlineHeartbeat::Off, 900, authforge::AuthForgeClient::kDefaultApiBaseUrl,
+    [](const std::string &reason, const std::exception *exc) {
+      std::cerr << reason << (exc ? std::string(": ") + exc->what() : "") << "\n";
+    });
+
+// 1. The customer sends you this value so you can bind the file to their machine:
+std::cout << "HWID: " << client.GetHwid() << "\n";
+
+// 2. Later, authorize from the minted file (path or armored text). No network.
+if (client.LoginFromFile("license.authforge")) {
+  const auto info = client.GetOfflineLicense();
+  std::cout << "Offline license OK until " << (info->expiresAt ? *info->expiresAt : "forever") << "\n";
+}
+```
+
+Collect the HWID from the same SDK build that will load the file: fingerprints are not portable across SDKs or languages. After `LoginFromFile()`, `GetSessionKind()` returns `SessionKind::Offline` (`SessionKind::Online` after `Login()`, `SessionKind::None` when logged out).
+
+`authforge::VerifyLicenseFile(text, appId, publicKeys, hwid)` (free function) and `client.VerifyLicenseFile(pathOrText)` perform the same checks without touching client state and return a `VerifyLicenseFileResult` (`ok`, `error`, `license`). Failure codes, in check order: `bad_armor`, `bad_signature`, `unsupported_version`, `malformed_payload`, `wrong_app`, `expired`, `hwid_mismatch`. `LoginFromFile()` reports them through `onFailure("offline_login_failed", &exc)` (with `exc.what()` = code) and returns `false`; it never calls `std::exit`.
+
+File format (version 1): PEM-style armor with informational headers, a base64 JSON payload (`v`, `appId`, `licenseKey`, `jti`, `kid`, `issuedAt`, `expiresAt`, `hwid` policy, optional label/variable snapshots) and a detached Ed25519 signature over the UTF-8 bytes of the base64 payload string - the same contract as `/auth/validate`. See `offline_license_vectors.json` for conformance vectors and `tests/offline_vectors_test.cpp` (build with `-DAUTHFORGE_BUILD_TESTS=ON`, run with `ctest`).
 
 ## Migrating from heartbeatMode
 
@@ -237,6 +281,7 @@ client.SelfBan("", "", false, true, true);
 - Uses post-session mode when a session token is available (`sessionToken` arg or current SDK session).
 - Falls back to pre-session mode with `licenseKey` + nonce + app secret.
 - In pre-session mode, revoke is always disabled client-side to avoid unsafe key revocations.
+- Not available after `LoginFromFile()`: offline sessions have no server session, so `SelfBan()` with no explicit `licenseKey` / `sessionToken` returns `false` and reports `onFailure("selfban_failed", &exc)` with `exc.what()` = `offline_session`, without contacting the server.
 
 ## How It Works
 
@@ -248,7 +293,13 @@ client.SelfBan("", "", false, true, true);
 
 ## Test Vectors
 
-The shared `test_vectors.json` file validates cross-language Ed25519 verification behavior.
+The shared `test_vectors.json` file validates cross-language Ed25519 verification behavior. `offline_license_vectors.json` (generated from a fixed test seed in the Node SDK repo) is the cross-SDK conformance suite for `.authforge` offline license files: good files plus the `bad_signature`, wrong key, `wrong_app`, `expired`, `hwid_mismatch`, `unsupported_version` and `bad_armor` rejects. Run it with:
+
+```bash
+cmake -S . -B build -DAUTHFORGE_BUILD_TESTS=ON
+cmake --build build
+ctest --test-dir build --output-on-failure
+```
 
 ## Requirements
 

@@ -346,7 +346,7 @@ AuthForgeClient::AuthForgeClient(
   }
 
   const std::string trimmedOverride = Trim(hwidOverride);
-  hwid_ = trimmedOverride.empty() ? GetHwid() : trimmedOverride;
+  hwid_ = trimmedOverride.empty() ? ComputeHwid() : trimmedOverride;
 }
 
 bool AuthForgeClient::Login(const std::string &licenseKey) {
@@ -413,11 +413,19 @@ bool AuthForgeClient::SelfBan(
     std::string resolvedSessionToken;
     std::string resolvedLicenseKey;
     std::string hwid;
+    SessionKind kind;
     {
       std::lock_guard<std::mutex> guard(lock_);
+      kind = sessionKind_;
       resolvedSessionToken = Trim(sessionToken.empty() ? sessionToken_ : sessionToken);
       resolvedLicenseKey = Trim(licenseKey.empty() ? licenseKey_ : licenseKey);
       hwid = hwid_;
+    }
+
+    // An offline session has no server session to revoke and no license key
+    // the server should hear about: fail locally, no HTTP.
+    if (kind == SessionKind::Offline && Trim(sessionToken).empty() && Trim(licenseKey).empty()) {
+      throw std::runtime_error("offline_session");
     }
 
     auto appendFlags = [](std::string body,
@@ -483,7 +491,7 @@ bool AuthForgeClient::SelfBan(
 
 void AuthForgeClient::StartHeartbeatOnce() {
   std::lock_guard<std::mutex> guard(lock_);
-  if (heartbeatStarted_) {
+  if (heartbeatStarted_ || sessionKind_ == SessionKind::Offline) {
     return;
   }
   heartbeatStop_ = false;
@@ -736,6 +744,7 @@ void AuthForgeClient::ApplySignedResponse(
       licenseVariablesJson_ = *licenseVars;
     }
     authenticated_ = true;
+    sessionKind_ = SessionKind::Online;
   }
 }
 
@@ -858,11 +867,26 @@ void AuthForgeClient::Logout() {
   appVariablesJson_.clear();
   licenseVariablesJson_.clear();
   authenticated_ = false;
+  sessionKind_ = SessionKind::None;
+  offlineLicense_.reset();
 }
 
 bool AuthForgeClient::IsAuthenticated() const {
   std::lock_guard<std::mutex> guard(lock_);
-  return authenticated_ && !sessionToken_.empty();
+  switch (sessionKind_) {
+  case SessionKind::Online:
+    return authenticated_ && !sessionToken_.empty();
+  case SessionKind::Offline:
+    return authenticated_ && offlineLicense_.has_value();
+  case SessionKind::None:
+    return false;
+  }
+  return false;
+}
+
+SessionKind AuthForgeClient::GetSessionKind() const {
+  std::lock_guard<std::mutex> guard(lock_);
+  return sessionKind_;
 }
 
 std::optional<std::string> AuthForgeClient::GetSessionDataJson() const {
@@ -889,7 +913,7 @@ std::optional<std::string> AuthForgeClient::GetLicenseVariablesJson() const {
   return licenseVariablesJson_;
 }
 
-std::string AuthForgeClient::GetHwid() const {
+std::string AuthForgeClient::ComputeHwid() const {
   const std::string mac = SafeMacAddress();
   const std::string cpu = SafeCpuInfo();
   const std::string disk = SafeDiskSerial();

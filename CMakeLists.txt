@@ -1,10 +1,11 @@
-﻿cmake_minimum_required(VERSION 3.16)
-project(AuthForgeCPPSDK VERSION 1.1.0 LANGUAGES CXX)
+cmake_minimum_required(VERSION 3.16)
+project(AuthForgeCPPSDK VERSION 1.2.0 LANGUAGES CXX)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
 option(AUTHFORGE_BUILD_VECTOR_GENERATOR "Build the test vector generator" OFF)
+option(AUTHFORGE_BUILD_TESTS "Build the offline license file conformance test (ctest)" OFF)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -17,7 +18,7 @@ find_package(Threads REQUIRED)
 find_path(SODIUM_INCLUDE_DIR sodium.h REQUIRED)
 find_library(SODIUM_LIBRARY NAMES sodium libsodium REQUIRED)
 
-add_library(authforge_sdk authforge_sdk.cpp)
+add_library(authforge_sdk authforge_sdk.cpp authforge_offline.cpp)
 target_include_directories(authforge_sdk PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
   $<INSTALL_INTERFACE:include>
@@ -61,4 +62,21 @@ install(
 if(AUTHFORGE_BUILD_VECTOR_GENERATOR)
   add_executable(generate_vectors generate_vectors.cpp)
   target_link_libraries(generate_vectors PRIVATE OpenSSL::Crypto)
+endif()
+
+if(AUTHFORGE_BUILD_TESTS)
+  enable_testing()
+  # The test includes authforge_offline.cpp directly (to reach the private
+  # JSON reader for the fixture), so it compiles against authforge_sdk.cpp
+  # instead of linking the library to avoid duplicate definitions.
+  add_executable(offline_vectors_test tests/offline_vectors_test.cpp authforge_sdk.cpp)
+  target_include_directories(offline_vectors_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${SODIUM_INCLUDE_DIR})
+  target_link_libraries(offline_vectors_test PRIVATE OpenSSL::Crypto CURL::libcurl Threads::Threads ${SODIUM_LIBRARY})
+  if(WIN32)
+    target_link_libraries(offline_vectors_test PRIVATE iphlpapi ws2_32)
+  endif()
+  add_test(
+    NAME offline_license_vectors
+    COMMAND offline_vectors_test "${CMAKE_CURRENT_SOURCE_DIR}/offline_license_vectors.json"
+  )
 endif()
