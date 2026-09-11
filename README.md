@@ -96,7 +96,7 @@ target_link_libraries(yourapp PRIVATE AuthForge::authforge_sdk)
 | Parameter | Type | Default | Description |
 |---|---|---|---|
 | `appId` | string | required | Your application ID from the AuthForge dashboard |
-| `appSecret` | string | required | Your application secret from the AuthForge dashboard |
+| `appSecret` | string | required for online APIs; `""` for `LoginFromFile` only | Your application secret from the AuthForge dashboard. Do not ship it in air-gapped binaries. |
 | `publicKey` | `std::string` / `std::vector<std::string>` | required | App Ed25519 public key(s) (base64) from dashboard. The single-string overload accepts a comma-separated trust list; the `std::vector<std::string>` overload takes a rotation set. The SDK trusts a signature matching **any** key (see [Key rotation](#key-rotation)). |
 | `onlineHeartbeat` | `authforge::OnlineHeartbeat` | `OnlineHeartbeat::Off` | `Off` (default): run through the grace period on the signed session, no network after activation. `On`: enable online check-ins via `/auth/heartbeat` (see below). |
 | `heartbeatInterval` | int | `900` | Seconds between background checks (minimum `10`; default 15 min). With online check-ins enabled, this is the check-in cadence. |
@@ -174,7 +174,7 @@ A desktop app with online check-ins running 6h/day at a 15-minute interval burns
 
 ## Offline license files (`.authforge`)
 
-For machines that never connect to the internet, the operator mints a **signed offline license file** in the AuthForge dashboard (License page -> *Mint .authforge file*) or via `POST /v1/licenses/{licenseKey}/offline-files`. The file is a standalone Ed25519-signed document; the SDK verifies it with **only** your app public key and the machine HWID. It never contacts AuthForge and never starts the background thread.
+For machines that never connect to the internet, the operator mints a **signed offline license file** in the AuthForge dashboard (License page -> *Mint .authforge file*) or via `POST /v1/licenses/{licenseKey}/offline-files`. The file is a standalone Ed25519-signed document; the SDK verifies it with **only** your app public key and the machine HWID. It never contacts AuthForge and never starts the background thread. Pass an empty `appSecret` so the air-gapped binary does not contain the App Secret.
 
 | | Grace period (default) | Offline license file |
 | --- | --- | --- |
@@ -187,7 +187,7 @@ For machines that never connect to the internet, the operator mints a **signed o
 ```cpp
 authforge::AuthForgeClient client(
     "YOUR_APP_ID",
-    "YOUR_APP_SECRET",  // unused for offline files but still required by the constructor
+    "",  // LoginFromFile does not use the App Secret; do not ship it in air-gapped builds
     "YOUR_PUBLIC_KEY",
     authforge::OnlineHeartbeat::Off, 900, authforge::AuthForgeClient::kDefaultApiBaseUrl,
     [](const std::string &reason, const std::exception *exc) {

@@ -7,7 +7,7 @@
 
 AuthForge is a license key validation service. Your app activates a license key online: it sends the key plus a hardware ID to `POST /auth/validate`, and the server checks revocation, expiry, HWID binding, and credits, then returns an Ed25519-signed session with a TTL. By default the app then runs through the grace period: it keeps running on that signed session without contacting AuthForge (the SDK re-verifies the signed session locally in the background) until the TTL expires. Optionally, you can enable online check-ins: periodic calls to `POST /auth/heartbeat` for fast revocation and concurrent-use detection. If the license is revoked or the session becomes invalid, the background check fails and you handle it (typically exit the app).
 
-There is also a **separate** mode for machines that can never reach the internet: **offline license files (`.authforge`)**. The operator mints a signed file in the AuthForge cloud; `LoginFromFile()` verifies it locally with the app public key and the machine HWID, with zero network calls. Only use it when the user explicitly asks for air-gapped / offline-file licensing. The default integration is always online `Login()` + grace period.
+There is also a **separate** mode for machines that can never reach the internet: **offline license files (`.authforge`)**. The operator mints a signed file in the AuthForge cloud; `LoginFromFile()` verifies it locally with the app public key and the machine HWID, with zero network calls. Do not ship the App Secret in those builds (pass `""`). Only use it when the user explicitly asks for air-gapped / offline-file licensing. The default integration is always online `Login()` + grace period.
 
 ## Installation
 
@@ -61,7 +61,7 @@ int main() {
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `appId` | `std::string` | yes | none | Application ID |
-| `appSecret` | `std::string` | yes | none | Application secret |
+| `appSecret` | `std::string` | for online APIs | none | Application secret. Required for `Login` / `ValidateLicense` / `SelfBan`. Pass `""` for `LoginFromFile` only; do not ship it in air-gapped binaries. |
 | `publicKey` | `std::string` / `std::vector<std::string>` | yes | none | Base64 Ed25519 public key from the dashboard (3rd positional arg). The string overload accepts a comma-separated trust list; a `std::vector<std::string>` overload takes a rotation set. The SDK trusts a signature matching **any** key |
 | `onlineHeartbeat` | `authforge::OnlineHeartbeat` | no | `OnlineHeartbeat::Off` | `Off` (default): after activation, run through the grace period on the signed session with no network calls. `On`: enable online check-ins via `/auth/heartbeat` for fast revocation and concurrent-use detection |
 | `heartbeatInterval` | `int` | no | `900` | Seconds between background checks (minimum `10`). With online check-ins enabled, revocations apply on the next check-in |
@@ -161,6 +161,7 @@ Use the `onFailure` callback; distinguish `reason` (`login_failed`, `heartbeat_f
 ## Do NOT
 
 - Do not hardcode the app secret as a plain string literal in source; use environment variables or encrypted config
+- Do not embed the App Secret in air-gapped / `LoginFromFile()` builds; pass `""`; verification only needs app id + public key
 - Do not omit `onFailure`; without it, failures call `std::exit(1)` without your cleanup
 - Do not call `Login` on every app action; call once at startup, the background checks handle the rest
 - Do not pass the deprecated `heartbeatMode` strings (`"LOCAL"` / `"SERVER"`) in new code; use the default for grace period behavior or `authforge::OnlineHeartbeat::On` for online check-ins

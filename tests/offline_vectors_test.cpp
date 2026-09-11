@@ -13,6 +13,7 @@
 #include <fstream>
 #include <iostream>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -86,7 +87,7 @@ struct TestClient {
     auto *sink = &failures;
     client = std::make_unique<authforge::AuthForgeClient>(
         appId.empty() ? good.appId : appId,
-        "unused-offline",
+        "",
         publicKey.empty() ? good.publicKey : publicKey,
         onlineHeartbeat,
         900,
@@ -201,6 +202,13 @@ int main(int argc, char **argv) {
     Check(!t.client->IsAuthenticated(), "logout clears auth");
     Check(t.client->GetSessionKind() == authforge::SessionKind::None, "logout clears session kind");
     Check(!t.client->GetOfflineLicense().has_value(), "logout clears offline license");
+    bool loginThrew = false;
+    try {
+      t.client->Login("XXXX-XXXX-XXXX-XXXX");
+    } catch (const std::invalid_argument &ex) {
+      loginThrew = std::string(ex.what()).find("app_secret is required") != std::string::npos;
+    }
+    Check(loginThrew, "Login requires app secret on an offline-only client");
   }
 
   // 4b. Offline SelfBan is a local error and never reaches the network. The

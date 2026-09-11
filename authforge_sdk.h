@@ -152,6 +152,10 @@ public:
   /// comma-separated trust list (current,previous) so callers can roll a key
   /// by re-deploying with an env var change.
   ///
+  /// appSecret may be empty when the client will only call LoginFromFile
+  /// (air-gapped builds should not ship the secret). Online APIs still
+  /// require a non-empty secret.
+  ///
   /// ttlSeconds requests the grace period duration in seconds for
   /// /auth/validate (how long the app keeps running on the signed session
   /// without contacting AuthForge). 0 means the server default (24h today);

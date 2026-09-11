@@ -310,9 +310,8 @@ AuthForgeClient::AuthForgeClient(
   if (appId_.empty()) {
     throw std::invalid_argument("app_id must be a non-empty string");
   }
-  if (appSecret_.empty()) {
-    throw std::invalid_argument("app_secret must be a non-empty string");
-  }
+  // Empty appSecret is valid for offline-only clients (LoginFromFile).
+  // Online APIs (Login, ValidateLicense, SelfBan) still require a secret.
   // Drop blanks/duplicates while preserving caller order: the first slot is
   // treated as the *current* key by tools/diagnostics.
   std::vector<std::string> deduped;
@@ -353,6 +352,10 @@ bool AuthForgeClient::Login(const std::string &licenseKey) {
   if (licenseKey.empty()) {
     throw std::invalid_argument("license_key must be a non-empty string");
   }
+  if (appSecret_.empty()) {
+    throw std::invalid_argument(
+        "app_secret is required for online APIs; omit it only when using LoginFromFile");
+  }
 
   try {
     ValidateAndStore(licenseKey);
@@ -372,6 +375,12 @@ ValidateLicenseResult AuthForgeClient::ValidateLicense(const std::string &licens
   if (licenseKey.empty()) {
     result.valid = false;
     result.errorCode = "missing_license_key";
+    return result;
+  }
+  if (appSecret_.empty()) {
+    result.valid = false;
+    result.errorCode =
+        "app_secret is required for online APIs; omit it only when using LoginFromFile";
     return result;
   }
 
@@ -461,6 +470,10 @@ bool AuthForgeClient::SelfBan(
     } else {
       if (resolvedLicenseKey.empty()) {
         throw std::runtime_error("missing_license_key");
+      }
+      if (appSecret_.empty()) {
+        throw std::invalid_argument(
+            "app_secret is required for online APIs; omit it only when using LoginFromFile");
       }
       std::string body = BuildJsonBody({
           {"appId", appId_},
