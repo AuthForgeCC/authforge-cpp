@@ -17,10 +17,6 @@
 #include <string>
 #include <vector>
 
-#ifndef AUTHFORGE_SDK_VERSION
-#error "AUTHFORGE_SDK_VERSION must be defined from CMake PROJECT_VERSION"
-#endif
-
 namespace authforge {
 
 // Befriended by AuthForgeClient (see authforge_sdk.h) so the test can drive
@@ -283,12 +279,20 @@ int main(int argc, char **argv) {
   }
 
   {
-    Check(std::string(kActivationRequestSdkTag) == std::string("cpp/") + AUTHFORGE_SDK_VERSION,
+    std::string sourceDir(argv[1]);
+    const auto slash = sourceDir.find_last_of("/\\");
+    sourceDir = (slash == std::string::npos ? std::string() : sourceDir.substr(0, slash + 1));
+    const std::string cmake = ReadFile(sourceDir + "CMakeLists.txt");
+    const std::string prefix = "project(AuthForgeCPPSDK VERSION ";
+    const auto pos = cmake.find(prefix);
+    Check(pos != std::string::npos, "CMakeLists project VERSION present");
+    const auto verStart = pos + prefix.size();
+    const auto verEnd = cmake.find(' ', verStart);
+    Check(verEnd != std::string::npos, "CMakeLists VERSION terminated");
+    const std::string cmakeVersion = cmake.substr(verStart, verEnd - verStart);
+    Check(std::string(kActivationRequestSdkTag) == std::string("cpp/") + cmakeVersion,
           "kActivationRequestSdkTag matches CMake project version");
-    std::string requestPath(argv[1]);
-    const auto slash = requestPath.find_last_of("/\\");
-    requestPath = (slash == std::string::npos ? std::string() : requestPath.substr(0, slash + 1)) +
-                  "activation_request_vectors.json";
+    std::string requestPath = sourceDir + "activation_request_vectors.json";
     const std::string requestJson = ReadFile(requestPath);
     authforge::JsonNode requestRoot = authforge::JsonReader(requestJson).ParseDocument();
     const authforge::JsonNode *requestCases = requestRoot.Get("cases");
