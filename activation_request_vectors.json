@@ -22,10 +22,10 @@
         "createdAt": "2026-09-11T12:00:00.000Z",
         "machineName": "dev-box",
         "os": "Windows 11",
-        "sdk": "python/1.2.1",
+        "sdk": "python/0.0.0-vectors",
         "licenseKey": "TEST-KEY0-0000-0000"
       },
-      "file": "-----BEGIN AUTHFORGE ACTIVATION REQUEST-----\nVersion: 1\nApp-Id: test-app\nChecksum: e496a94a849114c3\n\neyJ2IjoxLCJ0eXAiOiJhdXRoZm9yZ2UtYWN0aXZhdGlvbi1yZXF1ZXN0IiwiYXBw\nSWQiOiJ0ZXN0LWFwcCIsImh3aWQiOiJ0ZXN0aHdpZCIsImNyZWF0ZWRBdCI6IjIw\nMjYtMDktMTFUMTI6MDA6MDAuMDAwWiIsIm1hY2hpbmVOYW1lIjoiZGV2LWJveCIs\nIm9zIjoiV2luZG93cyAxMSIsInNkayI6InB5dGhvbi8xLjIuMSIsImxpY2Vuc2VL\nZXkiOiJURVNULUtFWTAtMDAwMC0wMDAwIn0=\n-----END AUTHFORGE ACTIVATION REQUEST-----\n"
+      "file": "-----BEGIN AUTHFORGE ACTIVATION REQUEST-----\nVersion: 1\nApp-Id: test-app\nChecksum: ee106dc238f9f8b1\n\neyJ2IjoxLCJ0eXAiOiJhdXRoZm9yZ2UtYWN0aXZhdGlvbi1yZXF1ZXN0IiwiYXBw\nSWQiOiJ0ZXN0LWFwcCIsImh3aWQiOiJ0ZXN0aHdpZCIsImNyZWF0ZWRBdCI6IjIw\nMjYtMDktMTFUMTI6MDA6MDAuMDAwWiIsIm1hY2hpbmVOYW1lIjoiZGV2LWJveCIs\nIm9zIjoiV2luZG93cyAxMSIsInNkayI6InB5dGhvbi8wLjAuMC12ZWN0b3JzIiwi\nbGljZW5zZUtleSI6IlRFU1QtS0VZMC0wMDAwLTAwMDAifQ==\n-----END AUTHFORGE ACTIVATION REQUEST-----\n"
     },
     {
       "name": "tolerate_crlf_bom_preamble",

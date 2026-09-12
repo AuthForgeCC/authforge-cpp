@@ -17,6 +17,10 @@
 #include <string>
 #include <vector>
 
+#ifndef AUTHFORGE_SDK_VERSION
+#error "AUTHFORGE_SDK_VERSION must be defined from CMake PROJECT_VERSION"
+#endif
+
 namespace authforge {
 
 // Befriended by AuthForgeClient (see authforge_sdk.h) so the test can drive
@@ -279,6 +283,8 @@ int main(int argc, char **argv) {
   }
 
   {
+    Check(std::string(kActivationRequestSdkTag) == std::string("cpp/") + AUTHFORGE_SDK_VERSION,
+          "kActivationRequestSdkTag matches CMake project version");
     std::string requestPath(argv[1]);
     const auto slash = requestPath.find_last_of("/\\");
     requestPath = (slash == std::string::npos ? std::string() : requestPath.substr(0, slash + 1)) +

@@ -19,6 +19,11 @@ jobs:
             echo "Tag v$TAG does not match CMakeLists.txt version $CMAKE"
             exit 1
           fi
+          SDK_TAG=$(grep -oP 'kActivationRequestSdkTag = "cpp/\K[0-9]+\.[0-9]+\.[0-9]+' authforge_offline.cpp)
+          if [ "$TAG" != "$SDK_TAG" ]; then
+            echo "Tag v$TAG does not match kActivationRequestSdkTag cpp/$SDK_TAG"
+            exit 1
+          fi
       - name: Create source archive
         run: |
           TAG="${GITHUB_REF#refs/tags/}"

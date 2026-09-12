@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(AuthForgeCPPSDK VERSION 1.3.0 LANGUAGES CXX)
+project(AuthForgeCPPSDK VERSION 1.3.1 LANGUAGES CXX)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
@@ -71,6 +71,7 @@ if(AUTHFORGE_BUILD_TESTS)
   # instead of linking the library to avoid duplicate definitions.
   add_executable(offline_vectors_test tests/offline_vectors_test.cpp authforge_sdk.cpp)
   target_include_directories(offline_vectors_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${SODIUM_INCLUDE_DIR})
+  target_compile_definitions(offline_vectors_test PRIVATE AUTHFORGE_SDK_VERSION="${PROJECT_VERSION}")
   target_link_libraries(offline_vectors_test PRIVATE OpenSSL::Crypto CURL::libcurl Threads::Threads ${SODIUM_LIBRARY})
   if(WIN32)
     target_link_libraries(offline_vectors_test PRIVATE iphlpapi ws2_32)

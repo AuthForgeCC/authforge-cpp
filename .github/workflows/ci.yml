@@ -38,6 +38,15 @@ jobs:
             extra+=("-DCMAKE_TOOLCHAIN_FILE=${root}/scripts/buildsystems/vcpkg.cmake")
           fi
           cmake -S . -B build -DAUTHFORGE_BUILD_VECTOR_GENERATOR=OFF -DAUTHFORGE_BUILD_TESTS=ON "${extra[@]}"
+      - name: Activation request SDK tag matches CMake version
+        shell: bash
+        run: |
+          CMAKE=$(grep -oE 'project\(AuthForgeCPPSDK VERSION [0-9]+\.[0-9]+\.[0-9]+' CMakeLists.txt | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+          TAG=$(grep -oE 'kActivationRequestSdkTag = "cpp/[0-9]+\.[0-9]+\.[0-9]+"' authforge_offline.cpp | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+          if [ "$CMAKE" != "$TAG" ]; then
+            echo "CMakeLists VERSION $CMAKE does not match kActivationRequestSdkTag cpp/$TAG"
+            exit 1
+          fi
       - name: Build
         run: cmake --build build --config Release
       - name: Offline license file conformance (ctest)
