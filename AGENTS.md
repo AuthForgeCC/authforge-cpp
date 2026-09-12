@@ -7,7 +7,7 @@
 
 AuthForge is a license key validation service. Your app activates a license key online: it sends the key plus a hardware ID to `POST /auth/validate`, and the server checks revocation, expiry, HWID binding, and credits, then returns an Ed25519-signed session with a TTL. By default the app then runs through the grace period: it keeps running on that signed session without contacting AuthForge (the SDK re-verifies the signed session locally in the background) until the TTL expires. Optionally, you can enable online check-ins: periodic calls to `POST /auth/heartbeat` for fast revocation and concurrent-use detection. If the license is revoked or the session becomes invalid, the background check fails and you handle it (typically exit the app).
 
-There is also a **separate** mode for machines that can never reach the internet: **offline license files (`.authforge`)**. The operator mints a signed file in the AuthForge cloud; `LoginFromFile()` verifies it locally with the app public key and the machine HWID, with zero network calls. Do not ship the App Secret in those builds (pass `""`). Only use it when the user explicitly asks for air-gapped / offline-file licensing. The default integration is always online `Login()` + grace period.
+There is also a **separate** mode for machines that can never reach the internet: **offline license files (`.authforge`)**. The operator mints a signed file in the AuthForge cloud; `LoginFromFile()` verifies it locally with the app public key and the machine HWID, with zero network calls. Do not ship the App Secret in those builds (pass `""`). Only use it when the user explicitly asks for air-gapped / offline-file licensing. The default integration is always online `Login()` + grace period. To collect the HWID for a bound file, write an **activation request** (`.authforge-request`) with `CreateActivationRequest`. It is not a license, is not signed, and does not mint anything. Prefer it over printing the raw HWID.
 
 ## Installation
 
@@ -102,6 +102,7 @@ The old string-mode constructors still work and behave exactly as before, but th
 | `GetOfflineLicense()` | `std::optional<OfflineLicense>` | `jti`, `expiresAt`, `hwidPolicy`, … of the offline file in use |
 | `GetSessionKind()` | `SessionKind` | `SessionKind::Online`, `SessionKind::Offline`, or `SessionKind::None` when logged out |
 | `GetHwid()` | `const std::string&` | HWID this client sends; the customer reports it so the operator can mint a bound file |
+| `CreateActivationRequest(const ActivationRequestOptions& = {})` | `std::string` | Unsigned `.authforge-request` for this machine. No network, no secret, callable before `Login()`. Hostname omitted unless `includeMachineName` |
 | `Logout()` | `void` | Stops background checks and clears state |
 | `IsAuthenticated()` | `bool` | Whether authenticated |
 | `GetSessionDataJson()` | `std::optional<std::string>` | Payload JSON string |

@@ -160,6 +160,7 @@ A desktop app with online check-ins running 6h/day at a 15-minute interval burns
 | `GetOfflineLicense()` | `std::optional<OfflineLicense>` | Metadata of the offline file in use (`jti`, `expiresAt`, `hwidPolicy`, …) |
 | `GetSessionKind()` | `SessionKind` | `SessionKind::Online`, `SessionKind::Offline`, or `SessionKind::None` when logged out |
 | `GetHwid()` | `const std::string&` | The HWID this client sends (or `hwidOverride`); customers share it to receive a bound file |
+| `CreateActivationRequest(const ActivationRequestOptions& = {})` | `std::string` | Unsigned `.authforge-request` for this machine. No network, no secret. Hostname omitted unless `includeMachineName` |
 | `Logout()` | `void` | Stops background checks and clears all session/auth state |
 | `IsAuthenticated()` | `bool` | True when an active authenticated session exists |
 | `GetSessionDataJson()` | `std::optional<std::string>` | Full decoded payload JSON |
@@ -194,8 +195,8 @@ authforge::AuthForgeClient client(
       std::cerr << reason << (exc ? std::string(": ") + exc->what() : "") << "\n";
     });
 
-// 1. The customer sends you this value so you can bind the file to their machine:
-std::cout << "HWID: " << client.GetHwid() << "\n";
+// 1. Write an activation request the operator drops into the mint dialog:
+std::string request = client.CreateActivationRequest();
 
 // 2. Later, authorize from the minted file (path or armored text). No network.
 if (client.LoginFromFile("license.authforge")) {

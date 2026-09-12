@@ -1,0 +1,51 @@
+{
+  "format": "authforge-activation-request",
+  "version": 1,
+  "description": "Cross-SDK conformance vectors for activation requests (.authforge-request). Generators with the same inputs must match good_minimal and good_full byte-for-byte. Parser tolerance: CRLF, UTF-8 BOM, re-wrapping, email preamble. Checksum is decision-relevant.",
+  "cases": [
+    {
+      "name": "good_minimal",
+      "expect": "ok",
+      "inputs": {
+        "appId": "test-app",
+        "hwid": "testhwid",
+        "createdAt": "2026-09-11T12:00:00.000Z"
+      },
+      "file": "-----BEGIN AUTHFORGE ACTIVATION REQUEST-----\nVersion: 1\nApp-Id: test-app\nChecksum: c64d10a2fe4d54f7\n\neyJ2IjoxLCJ0eXAiOiJhdXRoZm9yZ2UtYWN0aXZhdGlvbi1yZXF1ZXN0IiwiYXBw\nSWQiOiJ0ZXN0LWFwcCIsImh3aWQiOiJ0ZXN0aHdpZCIsImNyZWF0ZWRBdCI6IjIw\nMjYtMDktMTFUMTI6MDA6MDAuMDAwWiJ9\n-----END AUTHFORGE ACTIVATION REQUEST-----\n"
+    },
+    {
+      "name": "good_full",
+      "expect": "ok",
+      "inputs": {
+        "appId": "test-app",
+        "hwid": "testhwid",
+        "createdAt": "2026-09-11T12:00:00.000Z",
+        "machineName": "dev-box",
+        "os": "Windows 11",
+        "sdk": "python/1.2.1",
+        "licenseKey": "TEST-KEY0-0000-0000"
+      },
+      "file": "-----BEGIN AUTHFORGE ACTIVATION REQUEST-----\nVersion: 1\nApp-Id: test-app\nChecksum: e496a94a849114c3\n\neyJ2IjoxLCJ0eXAiOiJhdXRoZm9yZ2UtYWN0aXZhdGlvbi1yZXF1ZXN0IiwiYXBw\nSWQiOiJ0ZXN0LWFwcCIsImh3aWQiOiJ0ZXN0aHdpZCIsImNyZWF0ZWRBdCI6IjIw\nMjYtMDktMTFUMTI6MDA6MDAuMDAwWiIsIm1hY2hpbmVOYW1lIjoiZGV2LWJveCIs\nIm9zIjoiV2luZG93cyAxMSIsInNkayI6InB5dGhvbi8xLjIuMSIsImxpY2Vuc2VL\nZXkiOiJURVNULUtFWTAtMDAwMC0wMDAwIn0=\n-----END AUTHFORGE ACTIVATION REQUEST-----\n"
+    },
+    {
+      "name": "tolerate_crlf_bom_preamble",
+      "expect": "ok",
+      "file": "﻿Please see attached.\r\n-----BEGIN AUTHFORGE ACTIVATION REQUEST-----\r\nVersion: 1\r\nApp-Id: test-app\r\nChecksum: c64d10a2fe4d54f7\r\n\r\neyJ2IjoxLCJ0eXAiOiJh\r\ndXRoZm9yZ2UtYWN0aXZh\r\ndGlvbi1yZXF1ZXN0Iiwi\r\nYXBwSWQiOiJ0ZXN0LWFw\r\ncCIsImh3aWQiOiJ0ZXN0\r\naHdpZCIsImNyZWF0ZWRB\r\ndCI6IjIwMjYtMDktMTFU\r\nMTI6MDA6MDAuMDAwWiJ9\r\n-----END AUTHFORGE ACTIVATION REQUEST-----\r\nThanks,\r\nPat\r\n"
+    },
+    {
+      "name": "bad_checksum",
+      "expect": "checksum_mismatch",
+      "file": "-----BEGIN AUTHFORGE ACTIVATION REQUEST-----\nVersion: 1\nApp-Id: test-app\nChecksum: deadbeefdeadbeef\n\neyJ2IjoxLCJ0eXAiOiJhdXRoZm9yZ2UtYWN0aXZhdGlvbi1yZXF1ZXN0IiwiYXBw\nSWQiOiJ0ZXN0LWFwcCIsImh3aWQiOiJ0ZXN0aHdpZCIsImNyZWF0ZWRBdCI6IjIw\nMjYtMDktMTFUMTI6MDA6MDAuMDAwWiJ9\n-----END AUTHFORGE ACTIVATION REQUEST-----\n"
+    },
+    {
+      "name": "truncated_body",
+      "expect": "reject",
+      "file": "-----BEGIN AUTHFORGE ACTIVATION REQUEST-----\nVersion: 1\nApp-Id: test-app\nChecksum: c64d10a2fe4d54f7\n\neyJ2IjoxLCJ0eXAiOiJhdXRoZm9yZ2UtYWN0aXZhdGlvbi1yZXF1ZXN0IiwiYXBw\nSWQiOiJ0ZXN0LWFwcCIsImh3aWQiOiJ0ZXN0aHdpZCIsImNyZWF0ZWRBdCI6IjIw\nMjYtMDktMTFUMTI6MDA6\n-----END AUTHFORGE ACTIVATION REQUEST-----\n"
+    },
+    {
+      "name": "license_file",
+      "expect": "is_license_file",
+      "file": "-----BEGIN AUTHFORGE LICENSE-----\nVersion: 1\nApp-Id: test-app\n\nQUJD\n-----END AUTHFORGE LICENSE-----\n"
+    }
+  ]
+}

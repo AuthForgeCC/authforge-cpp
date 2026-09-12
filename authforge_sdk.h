@@ -144,6 +144,26 @@ VerifyLicenseFileResult VerifyLicenseFile(
 /// Parse `YYYY-MM-DDTHH:MM:SS[.fff][Z|+HH:MM]` into epoch milliseconds.
 std::optional<long long> ParseIso8601Ms(const std::string &value);
 
+/// Optional fields for AuthForgeClient::CreateActivationRequest.
+/// machineName is omitted unless includeMachineName is true.
+struct ActivationRequestOptions {
+  bool includeMachineName = false;
+  bool omitOs = false;
+  bool omitSdk = false;
+  std::string machineName;
+  std::string os;
+  std::string sdk;
+  std::string licenseKey;
+  std::string createdAt;
+};
+
+/// Armored `.authforge-request` text from explicit fields. Empty optional
+/// strings are omitted from the payload.
+std::string FormatActivationRequest(const std::string &appId, const std::string &hwid,
+                                    const std::string &createdAt, const std::string &machineName = "",
+                                    const std::string &os = "", const std::string &sdk = "",
+                                    const std::string &licenseKey = "");
+
 class AuthForgeClient {
 public:
   static constexpr const char *kDefaultApiBaseUrl = "https://auth.authforge.cc";
@@ -245,6 +265,11 @@ public:
   /// air-gapped machines report this value to the operator so an offline
   /// `.authforge` file can be bound to it.
   const std::string &GetHwid() const noexcept { return hwid_; }
+
+  /// Build an activation request (`.authforge-request`) for this machine.
+  /// No network, no session, no app secret. machineName is omitted unless
+  /// options.includeMachineName is true.
+  std::string CreateActivationRequest(const ActivationRequestOptions &options = ActivationRequestOptions()) const;
 
   /// Authorize from a cloud-minted offline license file (`.authforge`) with
   /// NO network access. Accepts a filesystem path or the armored text.

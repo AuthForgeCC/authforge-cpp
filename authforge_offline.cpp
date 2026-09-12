@@ -11,14 +11,23 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <cstdio>
 #include <cstdlib>
+#include <ctime>
 #include <fstream>
+#include <iomanip>
 #include <map>
 #include <memory>
 #include <sstream>
 #include <stdexcept>
 
 #include <sodium.h>
+
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <unistd.h>
+#endif
 
 namespace authforge {
 
@@ -792,6 +801,232 @@ void AuthForgeClient::ApplyOfflineLicense(const OfflineLicense &license) {
   licenseVariablesJson_ = license.licenseVariablesJson;
   offlineLicense_ = license;
   authenticated_ = true;
+}
+
+namespace {
+
+constexpr int kArmorLineWidth = 64;
+constexpr int kMaxRequestHwid = 256;
+constexpr int kMaxRequestMachineName = 128;
+constexpr int kMaxRequestOs = 64;
+constexpr int kMaxRequestSdk = 64;
+constexpr int kMaxRequestLicenseKey = 64;
+constexpr const char *kActivationRequestTyp = "authforge-activation-request";
+constexpr const char *kBeginActivationRequest = "-----BEGIN AUTHFORGE ACTIVATION REQUEST-----";
+constexpr const char *kEndActivationRequest = "-----END AUTHFORGE ACTIVATION REQUEST-----";
+constexpr const char *kActivationRequestSdkTag = "cpp/1.2.1";
+
+std::string ClipRequestField(const std::string &value, int max) {
+  if (static_cast<int>(value.size()) <= max) {
+    return value;
+  }
+  return value.substr(0, static_cast<std::size_t>(max));
+}
+
+std::string JsonEscapeRequest(const std::string &value) {
+  std::ostringstream oss;
+  oss << '"';
+  for (unsigned char ch : value) {
+    switch (ch) {
+    case '\\':
+      oss << "\\\\";
+      break;
+    case '"':
+      oss << "\\\"";
+      break;
+    case '\b':
+      oss << "\\b";
+      break;
+    case '\f':
+      oss << "\\f";
+      break;
+    case '\n':
+      oss << "\\n";
+      break;
+    case '\r':
+      oss << "\\r";
+      break;
+    case '\t':
+      oss << "\\t";
+      break;
+    default:
+      if (ch < 0x20U) {
+        oss << "\\u00";
+        oss << "0123456789abcdef"[(ch >> 4) & 0x0F];
+        oss << "0123456789abcdef"[ch & 0x0F];
+      } else {
+        oss << static_cast<char>(ch);
+      }
+      break;
+    }
+  }
+  oss << '"';
+  return oss.str();
+}
+
+std::string WrapArmor64(const std::string &value) {
+  std::string out;
+  for (std::size_t i = 0; i < value.size(); i += static_cast<std::size_t>(kArmorLineWidth)) {
+    if (!out.empty()) {
+      out.push_back('\n');
+    }
+    out.append(value, i, static_cast<std::size_t>(kArmorLineWidth));
+  }
+  return out;
+}
+
+std::string EncodeBase64(const std::string &input) {
+  static const char kTable[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  std::string out;
+  const auto *data = reinterpret_cast<const unsigned char *>(input.data());
+  const std::size_t len = input.size();
+  out.reserve(((len + 2) / 3) * 4);
+  std::size_t i = 0;
+  while (i + 2 < len) {
+    const unsigned int n = (static_cast<unsigned int>(data[i]) << 16) | (static_cast<unsigned int>(data[i + 1]) << 8) |
+                            static_cast<unsigned int>(data[i + 2]);
+    out.push_back(kTable[(n >> 18) & 63]);
+    out.push_back(kTable[(n >> 12) & 63]);
+    out.push_back(kTable[(n >> 6) & 63]);
+    out.push_back(kTable[n & 63]);
+    i += 3;
+  }
+  if (i < len) {
+    unsigned int n = static_cast<unsigned int>(data[i]) << 16;
+    if (i + 1 < len) {
+      n |= static_cast<unsigned int>(data[i + 1]) << 8;
+    }
+    out.push_back(kTable[(n >> 18) & 63]);
+    out.push_back(kTable[(n >> 12) & 63]);
+    out.push_back(i + 1 < len ? kTable[(n >> 6) & 63] : '=');
+    out.push_back('=');
+  }
+  return out;
+}
+
+std::string Sha256Hex16(const std::string &payloadB64) {
+  if (sodium_init() < 0) {
+    throw std::runtime_error("sodium_init failed");
+  }
+  unsigned char digest[crypto_hash_sha256_BYTES];
+  crypto_hash_sha256(digest, reinterpret_cast<const unsigned char *>(payloadB64.data()), payloadB64.size());
+  static constexpr char kHex[] = "0123456789abcdef";
+  std::string out(16, '0');
+  for (int i = 0; i < 8; ++i) {
+    out[static_cast<std::size_t>(i * 2)] = kHex[(digest[i] >> 4) & 0x0F];
+    out[static_cast<std::size_t>(i * 2 + 1)] = kHex[digest[i] & 0x0F];
+  }
+  return out;
+}
+
+std::string CanonicalActivationRequestJson(const std::string &appId, const std::string &hwid, const std::string &createdAt,
+                                           const std::string &machineName, const std::string &os, const std::string &sdk,
+                                           const std::string &licenseKey) {
+  std::string json = "{";
+  json += "\"v\":1";
+  json += ",\"typ\":" + JsonEscapeRequest(kActivationRequestTyp);
+  json += ",\"appId\":" + JsonEscapeRequest(appId);
+  json += ",\"hwid\":" + JsonEscapeRequest(ClipRequestField(hwid, kMaxRequestHwid));
+  json += ",\"createdAt\":" + JsonEscapeRequest(createdAt);
+  if (!machineName.empty()) {
+    json += ",\"machineName\":" + JsonEscapeRequest(ClipRequestField(machineName, kMaxRequestMachineName));
+  }
+  if (!os.empty()) {
+    json += ",\"os\":" + JsonEscapeRequest(ClipRequestField(os, kMaxRequestOs));
+  }
+  if (!sdk.empty()) {
+    json += ",\"sdk\":" + JsonEscapeRequest(ClipRequestField(sdk, kMaxRequestSdk));
+  }
+  if (!licenseKey.empty()) {
+    json += ",\"licenseKey\":" + JsonEscapeRequest(ClipRequestField(licenseKey, kMaxRequestLicenseKey));
+  }
+  json += "}";
+  return json;
+}
+
+std::string DetectOsLabel() {
+#if defined(_WIN32)
+  return "Windows";
+#elif defined(__APPLE__)
+  return "macOS";
+#else
+  return "Linux";
+#endif
+}
+
+std::string UtcIsoMsNow() {
+  const auto now = std::chrono::system_clock::now();
+  const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
+  const std::time_t t = std::chrono::system_clock::to_time_t(now);
+  std::tm tm{};
+#ifdef _WIN32
+  gmtime_s(&tm, &t);
+#else
+  gmtime_r(&t, &tm);
+#endif
+  char buf[32];
+  std::snprintf(buf, sizeof(buf), "%04d-%02d-%02dT%02d:%02d:%02d.%03dZ", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+                tm.tm_hour, tm.tm_min, tm.tm_sec, static_cast<int>(ms.count()));
+  return buf;
+}
+
+std::string DetectHostname() {
+#ifdef _WIN32
+  char buf[256];
+  DWORD n = static_cast<DWORD>(sizeof(buf));
+  if (GetComputerNameA(buf, &n) != 0) {
+    return buf;
+  }
+#else
+  char buf[256];
+  if (gethostname(buf, sizeof(buf)) == 0) {
+    return buf;
+  }
+#endif
+  return "";
+}
+
+} // namespace
+
+std::string FormatActivationRequest(const std::string &appId, const std::string &hwid, const std::string &createdAt,
+                                    const std::string &machineName, const std::string &os, const std::string &sdk,
+                                    const std::string &licenseKey) {
+  const std::string json = CanonicalActivationRequestJson(appId, hwid, createdAt, machineName, os, sdk, licenseKey);
+  const std::string payloadB64 = EncodeBase64(json);
+  const std::string checksum = Sha256Hex16(payloadB64);
+  std::string clean = appId;
+  for (char &ch : clean) {
+    if (ch == '\r' || ch == '\n') {
+      ch = ' ';
+    }
+  }
+  std::ostringstream oss;
+  oss << kBeginActivationRequest << "\n";
+  oss << "Version: 1\n";
+  oss << "App-Id: " << TrimCopy(clean) << "\n";
+  oss << "Checksum: " << checksum << "\n";
+  oss << "\n";
+  oss << WrapArmor64(payloadB64) << "\n";
+  oss << kEndActivationRequest << "\n";
+  return oss.str();
+}
+
+std::string AuthForgeClient::CreateActivationRequest(const ActivationRequestOptions &options) const {
+  const std::string createdAt = options.createdAt.empty() ? UtcIsoMsNow() : options.createdAt;
+  std::string machineName;
+  if (options.includeMachineName) {
+    machineName = options.machineName.empty() ? DetectHostname() : options.machineName;
+  }
+  std::string os;
+  if (!options.omitOs) {
+    os = options.os.empty() ? DetectOsLabel() : options.os;
+  }
+  std::string sdk;
+  if (!options.omitSdk) {
+    sdk = options.sdk.empty() ? kActivationRequestSdkTag : options.sdk;
+  }
+  const std::string licenseKey = options.licenseKey.empty() ? licenseKey_ : options.licenseKey;
+  return FormatActivationRequest(appId_, hwid_, createdAt, machineName, os, sdk, licenseKey);
 }
 
 } // namespace authforge

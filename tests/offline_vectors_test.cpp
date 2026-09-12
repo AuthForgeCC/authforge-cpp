@@ -278,6 +278,48 @@ int main(int argc, char **argv) {
     Check(t.failures.size() == 1 && t.failures[0].first == "offline_login_failed", "missing file reports offline_login_failed");
   }
 
+  {
+    std::string requestPath(argv[1]);
+    const auto slash = requestPath.find_last_of("/\\");
+    requestPath = (slash == std::string::npos ? std::string() : requestPath.substr(0, slash + 1)) +
+                  "activation_request_vectors.json";
+    const std::string requestJson = ReadFile(requestPath);
+    authforge::JsonNode requestRoot = authforge::JsonReader(requestJson).ParseDocument();
+    const authforge::JsonNode *requestCases = requestRoot.Get("cases");
+    Check(requestCases != nullptr && !requestCases->array.empty(), "activation request vectors present");
+    const std::string dummyKey = "0wRcYWn44wk9tHOisXgso1wbtUqpFdy0IeMk4HXDiNc=";
+    for (const auto &node : requestCases->array) {
+      const authforge::JsonNode *inputs = node.Get("inputs");
+      if (inputs == nullptr || inputs->kind != authforge::JsonNode::Kind::Object) {
+        continue;
+      }
+      const std::string name = Str(node.Get("name"));
+      const std::string want = Str(node.Get("file"));
+      const std::string appId = Str(inputs->Get("appId"));
+      const std::string hwid = Str(inputs->Get("hwid"));
+      const std::string createdAt = Str(inputs->Get("createdAt"));
+      const std::string machineName = Str(inputs->Get("machineName"));
+      const std::string os = Str(inputs->Get("os"));
+      const std::string sdk = Str(inputs->Get("sdk"));
+      const std::string licenseKey = Str(inputs->Get("licenseKey"));
+      authforge::AuthForgeClient client(appId, "", dummyKey, authforge::OnlineHeartbeat::Off, 900, "http://127.0.0.1:9",
+                                       nullptr, 15, 0, hwid);
+      authforge::ActivationRequestOptions opts;
+      opts.createdAt = createdAt;
+      opts.omitOs = os.empty();
+      opts.omitSdk = sdk.empty();
+      opts.includeMachineName = !machineName.empty();
+      opts.machineName = machineName;
+      opts.os = os;
+      opts.sdk = sdk;
+      opts.licenseKey = licenseKey;
+      const std::string got = client.CreateActivationRequest(opts);
+      Check(got == want, name + ": CreateActivationRequest matches vector");
+      Check(authforge::FormatActivationRequest(appId, hwid, createdAt, machineName, os, sdk, licenseKey) == want,
+            name + ": FormatActivationRequest matches vector");
+    }
+  }
+
   if (g_failures != 0) {
     std::cerr << g_failures << " check(s) failed\n";
     return 1;
