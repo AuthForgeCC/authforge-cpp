@@ -41,10 +41,11 @@ jobs:
       - name: Activation request SDK tag matches CMake version
         shell: bash
         run: |
-          CMAKE=$(grep -oE 'project\(AuthForgeCPPSDK VERSION [0-9]+\.[0-9]+\.[0-9]+' CMakeLists.txt | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
-          TAG=$(grep -oE 'kActivationRequestSdkTag = "cpp/[0-9]+\.[0-9]+\.[0-9]+"' authforge_offline.cpp | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
-          if [ "$CMAKE" != "$TAG" ]; then
-            echo "CMakeLists VERSION $CMAKE does not match kActivationRequestSdkTag cpp/$TAG"
+          set -euo pipefail
+          CMAKE=$(sed -n 's/^project(AuthForgeCPPSDK VERSION \([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\).*/\1/p' CMakeLists.txt | head -n 1)
+          TAG=$(sed -n 's/.*kActivationRequestSdkTag = "cpp\/\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)".*/\1/p' authforge_offline.cpp | head -n 1)
+          if [ -z "$CMAKE" ] || [ -z "$TAG" ] || [ "$CMAKE" != "$TAG" ]; then
+            echo "CMakeLists VERSION '$CMAKE' does not match kActivationRequestSdkTag cpp/$TAG"
             exit 1
           fi
       - name: Build
