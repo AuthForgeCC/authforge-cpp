@@ -290,8 +290,15 @@ int main(int argc, char **argv) {
     const auto verEnd = cmake.find(' ', verStart);
     Check(verEnd != std::string::npos, "CMakeLists VERSION terminated");
     const std::string cmakeVersion = cmake.substr(verStart, verEnd - verStart);
-    Check(std::string(kActivationRequestSdkTag) == std::string("cpp/") + cmakeVersion,
-          "kActivationRequestSdkTag matches CMake project version");
+    const std::string offlineCpp = ReadFile(sourceDir + "authforge_offline.cpp");
+    const std::string tagNeedle = "kActivationRequestSdkTag = \"cpp/";
+    const auto tagPos = offlineCpp.find(tagNeedle);
+    Check(tagPos != std::string::npos, "kActivationRequestSdkTag present");
+    const auto tagStart = tagPos + tagNeedle.size();
+    const auto tagEnd = offlineCpp.find('"', tagStart);
+    Check(tagEnd != std::string::npos, "kActivationRequestSdkTag terminated");
+    const std::string sdkTagVersion = offlineCpp.substr(tagStart, tagEnd - tagStart);
+    Check(sdkTagVersion == cmakeVersion, "kActivationRequestSdkTag matches CMake project version");
     std::string requestPath = sourceDir + "activation_request_vectors.json";
     const std::string requestJson = ReadFile(requestPath);
     authforge::JsonNode requestRoot = authforge::JsonReader(requestJson).ParseDocument();
