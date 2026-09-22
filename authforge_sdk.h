@@ -1,16 +1,47 @@
 #pragma once
 
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <exception>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <optional>
+#include <stdexcept>
+#include <thread>
 #include <unordered_set>
 #include <string>
 #include <utility>
 #include <vector>
 
 namespace authforge {
+
+/// True unless `code` is a definitive AuthForge verdict. Definitive codes:
+/// revoked, expired, hwid_mismatch, blocked, session_expired,
+/// malformed_request, app_disabled, invalid_app and the SDK-local
+/// signature_mismatch. Everything else (http_error_N, network_error, timeout,
+/// no_credits, rate_limited, unknown codes, ...) is transient.
+bool IsTransientErrorCode(const std::string &code);
+
+/// Error thrown by the online APIs and passed to onFailure. For server codes
+/// what() equals code().
+class AuthForgeError : public std::runtime_error {
+public:
+  explicit AuthForgeError(const std::string &code) : std::runtime_error(code), code_(code) {}
+  AuthForgeError(const std::string &code, const std::string &message)
+      : std::runtime_error(message), code_(code) {}
+
+  const std::string &code() const noexcept { return code_; }
+  /// Transient failures keep the session; background check-ins continue.
+  bool isTransient() const { return IsTransientErrorCode(code_); }
+  /// Definitive failures clear the session and stop background check-ins.
+  bool isFatal() const { return !isTransient(); }
+
+private:
+  std::string code_;
+};
 
 struct ValidateLicenseResult {
   bool valid = false;
@@ -241,6 +272,13 @@ public:
       int ttlSeconds = 0,
       std::string hwidOverride = "");
 
+  /// Stops background check-ins and waits for the heartbeat thread. Safe to
+  /// call from inside onFailure (the thread is detached instead of joined).
+  ~AuthForgeClient();
+
+  AuthForgeClient(const AuthForgeClient &) = delete;
+  AuthForgeClient &operator=(const AuthForgeClient &) = delete;
+
   /// Returns the configured trust list. Useful for tests and observability.
   const std::vector<std::string> &GetPublicKeys() const noexcept { return publicKeys_; }
 
@@ -296,6 +334,21 @@ private:
   // Test-only: lets tests/offline_vectors_test.cpp drive the private
   // heartbeat entry point to prove it is a no-op for offline sessions.
   friend struct OfflineVectorsTestAccess;
+  // Test-only: lets tests/heartbeat_test.cpp install the transport, sleep and
+  // nonce seams, seed session state and drive HeartbeatTick directly.
+  friend struct HeartbeatTestAccess;
+
+  struct HttpResponse {
+    bool transportOk = false;
+    bool timedOut = false;
+    std::string transportError;
+    long status = 0;
+    std::string body;
+  };
+
+  struct HeartbeatControl {
+    std::atomic<bool> stop{false};
+  };
 
   void ApplyOfflineLicense(const OfflineLicense &license);
   static std::string ReadLicenseFileInput(const std::string &pathOrText);
@@ -308,7 +361,11 @@ private:
   enum class SigningContext { Validate, Heartbeat };
 
   void StartHeartbeatOnce();
-  void HeartbeatLoop() noexcept;
+  void HeartbeatLoop(std::shared_ptr<HeartbeatControl> control) noexcept;
+  /// One background check. Returns false when check-ins must stop (a
+  /// definitive failure). onFailure runs with no lock held and no member is
+  /// touched after it returns, so the callback may destroy the client.
+  bool HeartbeatTick();
   void ServerHeartbeat();
   /// Grace period check: re-verifies the stored signed session locally (no
   /// network) and fails with session_expired once the grace period ends.
@@ -320,9 +377,15 @@ private:
       const std::optional<std::string> &licenseKey,
       SigningContext context,
       bool persistToSession = true,
-      ValidateLicenseResult *validateOnlyOut = nullptr);
+      ValidateLicenseResult *validateOnlyOut = nullptr,
+      std::optional<std::uint64_t> expectedGeneration = std::nullopt);
+  /// Clears the session and stops check-ins. With expectedGeneration, does
+  /// nothing (and returns false) when the session changed since it was read.
+  bool EndSession(std::optional<std::uint64_t> expectedGeneration);
+  bool LocalSessionExpired() const;
 
   std::string PostJson(const std::string &path, const std::string &bodyJson, std::string *usedNonce = nullptr) const;
+  static HttpResponse CurlPost(const std::string &url, const std::string &body, long timeoutSeconds);
   std::string ExtractServerError(const std::string &responseJson) const;
   void Fail(const std::string &reason, const std::exception *exc = nullptr) const noexcept;
 
@@ -370,8 +433,18 @@ private:
   // heartbeat refreshes.
   int ttlSeconds_;
 
+  std::function<HttpResponse(const std::string &url, const std::string &body, long timeoutSeconds)> transport_;
+  std::function<void(std::chrono::seconds)> sleep_;
+  std::function<std::string()> nonce_;
+
   mutable std::mutex lock_;
   bool heartbeatStarted_;
+  std::thread heartbeatThread_;
+  std::condition_variable heartbeatCv_;
+  std::shared_ptr<HeartbeatControl> heartbeatControl_;
+  // Bumped by Logout and every new online session; a heartbeat response only
+  // writes back when the generation it started with is still current.
+  std::uint64_t sessionGeneration_ = 0;
 
   std::string licenseKey_;
   std::string sessionToken_;
@@ -386,7 +459,6 @@ private:
   std::string licenseVariablesJson_;
   bool authenticated_ = false;
   SessionKind sessionKind_ = SessionKind::None;
-  bool heartbeatStop_ = false;
   std::string hwid_;
   std::optional<OfflineLicense> offlineLicense_;
   std::unordered_set<std::string> knownServerErrors_ = {
@@ -396,6 +468,7 @@ private:
       "revoked",
       "hwid_mismatch",
       "no_credits",
+      "demo_quota_exceeded",
       "app_burn_cap_reached",
       "blocked",
       "rate_limited",

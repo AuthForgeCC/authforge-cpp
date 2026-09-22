@@ -1,11 +1,11 @@
 cmake_minimum_required(VERSION 3.16)
-project(AuthForgeCPPSDK VERSION 1.3.1 LANGUAGES CXX)
+project(AuthForgeCPPSDK VERSION 1.4.0 LANGUAGES CXX)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
 option(AUTHFORGE_BUILD_VECTOR_GENERATOR "Build the test vector generator" OFF)
-option(AUTHFORGE_BUILD_TESTS "Build the offline license file conformance test (ctest)" OFF)
+option(AUTHFORGE_BUILD_TESTS "Build the offline license file and heartbeat tests (ctest)" OFF)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -78,5 +78,18 @@ if(AUTHFORGE_BUILD_TESTS)
   add_test(
     NAME offline_license_vectors
     COMMAND offline_vectors_test "${CMAKE_CURRENT_SOURCE_DIR}/offline_license_vectors.json"
+  )
+
+  # Same layout as offline_vectors_test: includes authforge_offline.cpp for
+  # the JSON reader and compiles against authforge_sdk.cpp.
+  add_executable(heartbeat_test tests/heartbeat_test.cpp authforge_sdk.cpp)
+  target_include_directories(heartbeat_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${SODIUM_INCLUDE_DIR})
+  target_link_libraries(heartbeat_test PRIVATE OpenSSL::Crypto CURL::libcurl Threads::Threads ${SODIUM_LIBRARY})
+  if(WIN32)
+    target_link_libraries(heartbeat_test PRIVATE iphlpapi ws2_32)
+  endif()
+  add_test(
+    NAME heartbeat
+    COMMAND heartbeat_test "${CMAKE_CURRENT_SOURCE_DIR}/test_vectors.json"
   )
 endif()

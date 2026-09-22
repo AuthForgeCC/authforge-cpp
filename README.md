@@ -26,7 +26,8 @@ Everything in this list ships in `authforge_sdk.h` / `authforge_sdk.cpp` today:
 - **Self-ban** (`SelfBan(...)`) for anti-tamper response, both pre-session and post-session.
 - **Grace period duration control** (`ttlSeconds`) with server-side clamping to `[3600, 604800]`.
 - **App variables / license variables** for feature flags and tiered licensing.
-- **Automatic retries** for rate-limited and transient network failures, with a fresh nonce per retry.
+- **Automatic retries** for rate-limited and transient network failures, with a fresh nonce per rate-limit retry.
+- **Typed failures**: `authforge::AuthForgeError` carries the server code plus a transient/definitive classification (see [Failure Handling](#failure-handling)).
 
 There is **no C++ package registry** for this SDK. Ship source via **GitHub Releases** (tag `v*`, source archive) or by **cloning** the repository, then build with CMake as below.
 
@@ -171,7 +172,7 @@ A desktop app with online check-ins running 6h/day at a 15-minute interval burns
 
 **Grace period (default).** After a successful online activation, the app keeps running on the Ed25519-signed session without contacting AuthForge. The background loop re-verifies the signed session locally and triggers failure with `session_expired` when the grace period ends. The grace period equals the session TTL: default 24h, and the server clamps requested values (`ttlSeconds`) to 1h to 7d. This is session continuation after one successful online activation, not persistent offline licensing, and a mid-session revocation cannot take effect until the next online activation.
 
-**Online check-ins (opt-in).** Construct the client with `authforge::OnlineHeartbeat::On` and the SDK calls `/auth/heartbeat` every `heartbeatInterval` seconds with a fresh nonce, verifies signature + nonce, and triggers failure on invalid session state. Choose this for fast revocation and concurrent-use detection.
+**Online check-ins (opt-in).** Construct the client with `authforge::OnlineHeartbeat::On` and the SDK calls `/auth/heartbeat` every `heartbeatInterval` seconds with a fresh nonce, verifies signature + nonce, and triggers failure on invalid session state. Definitive failures clear the session and stop check-ins; transient ones (network, server errors, `no_credits`, ...) are reported and check-ins continue (see [Failure Handling](#failure-handling)). Choose this for fast revocation and concurrent-use detection.
 
 ## Offline license files (`.authforge`)
 
@@ -239,13 +240,22 @@ If authentication fails, the SDK calls your `onFailure` callback if one is provi
 
 **`ValidateLicense()`** always returns a `ValidateLicenseResult` and does not invoke `onFailure` or exit the process.
 
-Recognized server errors:
-`invalid_app`, `invalid_key`, `expired`, `revoked`, `hwid_mismatch`, `no_credits`, `app_burn_cap_reached`, `blocked`, `rate_limited`, `replay_detected`, `app_disabled`, `session_expired`, `revoke_requires_session`, `bad_request`, `malformed_request`, `system_error`
+`Login()`, `SelfBan()` and background checks pass an `authforge::AuthForgeError` as `exc`, with `code()`, `isTransient()` and `isFatal()`. For server codes `exc->what()` equals the code. A non-2xx response with a JSON body yields the server's clean code on both login and check-ins (`what()` is `invalid_key`, not `http_error_401: {...}`); only non-JSON error pages become `http_error_<status>`. `authforge::IsTransientErrorCode(code)` exposes the same classification.
+
+| Class | Codes | Background check (`heartbeat_failed`) |
+|---|---|---|
+| Definitive | `revoked`, `expired`, `hwid_mismatch`, `blocked`, `session_expired`, `malformed_request`, `app_disabled`, `invalid_app`, `signature_mismatch` | The session is cleared (`Logout()`) before `onFailure` runs, so `IsAuthenticated()` is `false`; check-ins stop |
+| Transient | Everything else: `rate_limited`, `system_error`, `no_credits`, `demo_quota_exceeded`, `app_burn_cap_reached`, `bad_request`, `invalid_key`, `replay_detected`, `unexpected_response`, `http_error_<status>`, `invalid_json_response`, `response_not_json_object`, `network_error`, `timeout`, and any unknown code | The session is kept, `onFailure` runs, and check-ins continue at the next interval |
+
+- A transient failure after the session's signed TTL has passed is reported as `session_expired` (definitive). The grace period check also ends with `session_expired`.
+- On check-ins, `hwid_mismatch` means this device's HWID is no longer bound to the license (for example after an HWID reset), and `blocked` means the HWID or IP is blacklisted or not on the app's whitelist.
+- `unexpected_response` means a check-in failure body that is not `{"status":"failed","error":"<code>"}` (for example a proxy error in JSON). It is never treated as a verdict; `what()` keeps the raw `status`/`error`.
+- Unknown snake_case server codes are passed through as-is instead of becoming `unknown_error`.
 
 Request retries are automatic inside the internal HTTP layer:
-- `rate_limited`: retry after 2s, then 5s (max 3 attempts total)
-- network failure: retry once after 2s
-- every retry regenerates a fresh nonce
+- `rate_limited` (or HTTP 429 without an error code): retry after 2s, then 5s (max 3 attempts total), each with a fresh nonce
+- `no_credits`, `demo_quota_exceeded` and `app_burn_cap_reached` also use HTTP 429 but are not retried; the next check-in happens at the next interval
+- network failure: retry once after 2s, then fail with `network_error` or `timeout` (`what()` starts with `url_error: `)
 
 ```cpp
 authforge::AuthForgeClient client(
@@ -256,12 +266,18 @@ authforge::AuthForgeClient client(
     900,
     authforge::AuthForgeClient::kDefaultApiBaseUrl,
     [](const std::string& reason, const std::exception* exc) {
+        if (auto* e = dynamic_cast<const authforge::AuthForgeError*>(exc); e && e->isTransient()) {
+            std::cerr << "AuthForge " << reason << " (transient): " << e->code() << std::endl;
+            return; // session kept; check-ins continue (Login() still returns false)
+        }
         std::cerr << "Auth failed: " << reason << std::endl;
         if (exc) std::cerr << "Details: " << exc->what() << std::endl;
         std::exit(1);
     }
 );
 ```
+
+**Thread safety.** Background `onFailure` calls run on the heartbeat thread with no SDK lock held. Calling `Logout()`, `IsAuthenticated()` or `Login()` from the callback, or destroying the client inside it, is safe. `Logout()` stops check-ins without blocking; the destructor stops the heartbeat thread and joins it (waiting for an in-flight check-in, if any).
 
 ## Self-ban (tamper response)
 
@@ -288,13 +304,13 @@ client.SelfBan("", "", false, true, true);
 
 1. **Activate**: `Login` uses `hwidOverride` when non-empty; otherwise it collects a hardware fingerprint (MAC, CPU, disk serial). It then generates a random nonce and sends everything to the AuthForge API. The server validates the license key, binds the HWID, deducts a credit, and returns a signed payload. The SDK verifies the Ed25519 signature and nonce to prevent replay attacks.
 
-2. **Background checks**: a detached background thread runs at the configured interval. By default it re-verifies the stored signed session locally and enforces the grace period without network calls. With online check-ins enabled, it instead sends a fresh nonce to `/auth/heartbeat` and verifies the response.
+2. **Background checks**: a background thread runs at the configured interval (`Logout()` stops it; the destructor joins it). By default it re-verifies the stored signed session locally and enforces the grace period without network calls. With online check-ins enabled, it instead sends a fresh nonce to `/auth/heartbeat` and verifies the response.
 
 3. **Crypto**: both `/validate` and `/heartbeat` responses are signed by AuthForge with your app's Ed25519 private key. The SDK verifies every signed `payload` using your configured `publicKey` and rejects tampered responses.
 
 ## Test Vectors
 
-The shared `test_vectors.json` file validates cross-language Ed25519 verification behavior. `offline_license_vectors.json` (generated from a fixed test seed in the Node SDK repo) is the cross-SDK conformance suite for `.authforge` offline license files: good files plus the `bad_signature`, wrong key, `wrong_app`, `expired`, `hwid_mismatch`, `unsupported_version` and `bad_armor` rejects. Run it with:
+The shared `test_vectors.json` file validates cross-language Ed25519 verification behavior. `offline_license_vectors.json` (generated from a fixed test seed in the Node SDK repo) is the cross-SDK conformance suite for `.authforge` offline license files: good files plus the `bad_signature`, wrong key, `wrong_app`, `expired`, `hwid_mismatch`, `unsupported_version` and `bad_armor` rejects. `tests/heartbeat_test.cpp` covers the heartbeat failure contract (classification, retries, session clearing, callback thread safety) against a fake transport. Run both with:
 
 ```bash
 cmake -S . -B build -DAUTHFORGE_BUILD_TESTS=ON

@@ -111,12 +111,14 @@ The old string-mode constructors still work and behave exactly as before, but th
 
 ## Error codes the server can return
 
-Full set: invalid_app, invalid_key, expired, revoked, hwid_mismatch, no_credits, app_burn_cap_reached, blocked, rate_limited, replay_detected, app_disabled, session_expired, revoke_requires_session, bad_request, malformed_request, system_error
+Full set: invalid_app, invalid_key, expired, revoked, hwid_mismatch, no_credits, demo_quota_exceeded, app_burn_cap_reached, blocked, rate_limited, replay_detected, app_disabled, session_expired, revoke_requires_session, bad_request, malformed_request, system_error. Unknown snake_case codes are passed through unchanged.
+
+Non-2xx responses with a JSON body surface the clean code on both `Login` and check-ins (`exc->what()` is `invalid_key`, not `http_error_401: {...}`). Only non-JSON error pages become `http_error_<status>`.
 
 Notes:
 - `replay_detected` is validate-only. `rate_limited` can be returned by `/auth/validate` and `/auth/heartbeat` (heartbeat is license-limited at 6/min and has no app-layer IP limit).
 - `app_burn_cap_reached` means the app's configured credit burn cap is hit; `revoke_requires_session` means a pre-session self-ban tried to revoke a license (only session-authenticated self-ban can revoke).
-- `session_expired` is what the default background check reports when the grace period ends; the app must activate online again.
+- `session_expired` is what the default background check reports when the grace period ends; the session is cleared and the app must activate online again.
 
 ## Common patterns
 
@@ -155,9 +157,29 @@ if (!client.LoginFromFile("license.authforge")) {
 
 Offline file error codes (in check order): `bad_armor`, `bad_signature`, `unsupported_version`, `malformed_payload`, `wrong_app`, `expired`, `hwid_mismatch`.
 
-### Custom error handling
+### Failure handling
 
-Use the `onFailure` callback; distinguish `reason` (`login_failed`, `heartbeat_failed`, `network_error`) and inspect `exc` when non-null.
+`onFailure(reason, exc)` receives `reason` = `login_failed`, `heartbeat_failed`, `selfban_failed` or `offline_login_failed`. There is no `network_error` reason: network failures arrive as `heartbeat_failed` / `login_failed` with code `network_error` or `timeout`. For online APIs `exc` is an `authforge::AuthForgeError` with `code()`, `isTransient()` and `isFatal()`; for server codes `exc->what()` equals the code. `authforge::IsTransientErrorCode(code)` gives the same classification.
+
+| Class | Codes | Background check behavior |
+|-------|-------|---------------------------|
+| Definitive | `revoked`, `expired`, `hwid_mismatch`, `blocked`, `session_expired`, `malformed_request`, `app_disabled`, `invalid_app`, `signature_mismatch` | Session cleared (`Logout()`) before `onFailure`; `IsAuthenticated()` is `false`; check-ins stop |
+| Transient | Everything else, including `rate_limited`, `system_error`, `no_credits`, `demo_quota_exceeded`, `app_burn_cap_reached`, `bad_request`, `invalid_key`, `unexpected_response`, `http_error_<status>`, `network_error`, `timeout` and unknown codes | Session kept; `onFailure` runs; check-ins continue |
+
+- A transient failure after the signed session TTL is reported as `session_expired` (definitive).
+- On check-ins, `hwid_mismatch` means the HWID is no longer bound to the license (for example after an HWID reset); `blocked` means the HWID or IP is blacklisted or not whitelisted.
+- `unexpected_response`: a check-in failure body that is not `{"status":"failed","error":"<code>"}`; never treated as a verdict.
+- Only `rate_limited` (or a 429 with no error code) is retried (2s, then 5s). `no_credits`, `demo_quota_exceeded` and `app_burn_cap_reached` are not retried.
+
+```cpp
+[](const std::string &reason, const std::exception *exc) {
+  if (auto* e = dynamic_cast<const authforge::AuthForgeError*>(exc); e && e->isTransient()) return;
+  std::cerr << "AuthForge: " << reason << (exc ? std::string(": ") + exc->what() : "") << "\n";
+  std::exit(1);
+}
+```
+
+Thread safety: background `onFailure` calls run on the heartbeat thread with no SDK lock held. Calling `Logout()` / `IsAuthenticated()` from the callback, or destroying the client inside it, is safe. The destructor stops and joins the heartbeat thread.
 
 ## Do NOT
 

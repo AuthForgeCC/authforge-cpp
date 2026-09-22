@@ -814,7 +814,7 @@ constexpr int kMaxRequestLicenseKey = 64;
 constexpr const char *kActivationRequestTyp = "authforge-activation-request";
 constexpr const char *kBeginActivationRequest = "-----BEGIN AUTHFORGE ACTIVATION REQUEST-----";
 constexpr const char *kEndActivationRequest = "-----END AUTHFORGE ACTIVATION REQUEST-----";
-constexpr const char *kActivationRequestSdkTag = "cpp/1.3.1";
+constexpr const char *kActivationRequestSdkTag = "cpp/1.4.0";
 
 std::string ClipRequestField(const std::string &value, int max) {
   if (static_cast<int>(value.size()) <= max) {

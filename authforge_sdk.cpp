@@ -129,17 +129,40 @@ size_t CurlWriteCallback(char *ptr, size_t size, size_t nmemb, void *userdata) {
   return bytes;
 }
 
-void EnsureCurlInit() {
-  static std::once_flag initFlag;
-  std::call_once(initFlag, []() {
-    const CURLcode rc = curl_global_init(CURL_GLOBAL_DEFAULT);
-    if (rc != CURLE_OK) {
-      throw std::runtime_error("url_error: curl_global_init_failed");
-    }
+bool EnsureCurlInit() {
+  static const bool initialized = curl_global_init(CURL_GLOBAL_DEFAULT) == CURLE_OK;
+  return initialized;
+}
+
+// Server codes are snake_case tokens: ^[a-z][a-z0-9_]{0,63}$.
+bool IsErrorCodeToken(const std::string &code) {
+  if (code.empty() || code.size() > 64 || code.front() < 'a' || code.front() > 'z') {
+    return false;
+  }
+  return std::all_of(code.begin(), code.end(), [](char c) {
+    return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_';
   });
 }
 
+constexpr std::array<int, 2> kRateLimitRetryDelays = {2, 5};
+constexpr int kNetworkRetryDelay = 2;
+
 } // namespace
+
+bool IsTransientErrorCode(const std::string &code) {
+  static const std::unordered_set<std::string> kDefinitiveErrorCodes = {
+      "revoked",
+      "expired",
+      "hwid_mismatch",
+      "blocked",
+      "session_expired",
+      "malformed_request",
+      "app_disabled",
+      "invalid_app",
+      "signature_mismatch",
+  };
+  return kDefinitiveErrorCodes.find(code) == kDefinitiveErrorCodes.end();
+}
 
 std::string RefreshNonceInBody(const std::string &bodyJson, const std::string &newNonce) {
   const std::string marker = "\"nonce\":\"";
@@ -306,6 +329,9 @@ AuthForgeClient::AuthForgeClient(
       onFailure_(std::move(onFailure)),
       requestTimeout_(requestTimeout),
       ttlSeconds_(ttlSeconds > 0 ? ttlSeconds : 0),
+      transport_(CurlPost),
+      sleep_([](std::chrono::seconds delay) { std::this_thread::sleep_for(delay); }),
+      nonce_(GenerateNonceHex32),
       heartbeatStarted_(false) {
   if (appId_.empty()) {
     throw std::invalid_argument("app_id must be a non-empty string");
@@ -348,6 +374,31 @@ AuthForgeClient::AuthForgeClient(
   hwid_ = trimmedOverride.empty() ? ComputeHwid() : trimmedOverride;
 }
 
+AuthForgeClient::~AuthForgeClient() {
+  // Loop because onFailure (running on the thread being joined) may call
+  // Login() and start a replacement thread.
+  while (true) {
+    std::thread thread;
+    {
+      std::lock_guard<std::mutex> guard(lock_);
+      ++sessionGeneration_;
+      if (heartbeatControl_) {
+        heartbeatControl_->stop = true;
+      }
+      thread = std::move(heartbeatThread_);
+    }
+    heartbeatCv_.notify_all();
+    if (!thread.joinable()) {
+      return;
+    }
+    if (thread.get_id() == std::this_thread::get_id()) {
+      thread.detach();
+      return;
+    }
+    thread.join();
+  }
+}
+
 bool AuthForgeClient::Login(const std::string &licenseKey) {
   if (licenseKey.empty()) {
     throw std::invalid_argument("license_key must be a non-empty string");
@@ -385,7 +436,7 @@ ValidateLicenseResult AuthForgeClient::ValidateLicense(const std::string &licens
   }
 
   try {
-    const std::string nonce = GenerateNonceHex32();
+    const std::string nonce = nonce_();
     std::string body = BuildJsonBody({
         {"appId", appId_},
         {"appSecret", appSecret_},
@@ -480,7 +531,7 @@ bool AuthForgeClient::SelfBan(
           {"appSecret", appSecret_},
           {"licenseKey", resolvedLicenseKey},
           {"hwid", hwid},
-          {"nonce", GenerateNonceHex32()},
+          {"nonce", nonce_()},
       });
       // Pre-session self-ban cannot revoke licenses.
       body = appendFlags(body, false, true, blacklistHwid, blacklistIp);
@@ -490,7 +541,7 @@ bool AuthForgeClient::SelfBan(
     JsonValue status;
     ExtractJsonValue(response, "status", status);
     if (!IsSuccessStatus(status)) {
-      throw std::runtime_error(ExtractServerError(response));
+      throw AuthForgeError(ExtractServerError(response));
     }
     return true;
   } catch (const std::exception &exc) {
@@ -503,53 +554,113 @@ bool AuthForgeClient::SelfBan(
 }
 
 void AuthForgeClient::StartHeartbeatOnce() {
-  std::lock_guard<std::mutex> guard(lock_);
-  if (heartbeatStarted_ || sessionKind_ == SessionKind::Offline) {
-    return;
-  }
-  heartbeatStop_ = false;
-  heartbeatStarted_ = true;
-  std::thread([this]() { HeartbeatLoop(); }).detach();
-}
-
-void AuthForgeClient::HeartbeatLoop() noexcept {
   while (true) {
-    std::this_thread::sleep_for(std::chrono::seconds(heartbeatInterval_));
+    std::thread previous;
     {
       std::lock_guard<std::mutex> guard(lock_);
-      if (heartbeatStop_) {
-        break;
+      if (heartbeatStarted_ || sessionKind_ == SessionKind::Offline) {
+        return;
       }
+      if (!heartbeatThread_.joinable()) {
+        auto control = std::make_shared<HeartbeatControl>();
+        heartbeatControl_ = control;
+        heartbeatStarted_ = true;
+        heartbeatThread_ = std::thread([this, control]() { HeartbeatLoop(control); });
+        return;
+      }
+      if (heartbeatControl_) {
+        heartbeatControl_->stop = true;
+      }
+      previous = std::move(heartbeatThread_);
     }
-    try {
-      if (onlineHeartbeat_) {
-        ServerHeartbeat();
-      } else {
-        GracePeriodCheck();
-      }
-    } catch (const std::exception &exc) {
-      Fail("heartbeat_failed", &exc);
-      break;
-    } catch (...) {
-      Fail("heartbeat_failed", nullptr);
-      break;
+    heartbeatCv_.notify_all();
+    if (previous.get_id() == std::this_thread::get_id()) {
+      previous.detach();
+    } else {
+      previous.join();
     }
   }
+}
+
+void AuthForgeClient::HeartbeatLoop(std::shared_ptr<HeartbeatControl> control) noexcept {
+  while (true) {
+    {
+      std::unique_lock<std::mutex> guard(lock_);
+      heartbeatCv_.wait_for(guard, std::chrono::seconds(heartbeatInterval_),
+                            [&control]() { return control->stop.load(); });
+      if (control->stop) {
+        return;
+      }
+    }
+    const bool keepRunning = HeartbeatTick();
+    // onFailure may have destroyed the client: check the control before
+    // touching any member again.
+    if (control->stop || !keepRunning) {
+      return;
+    }
+  }
+}
+
+bool AuthForgeClient::HeartbeatTick() {
+  std::uint64_t generation = 0;
+  {
+    std::lock_guard<std::mutex> guard(lock_);
+    generation = sessionGeneration_;
+  }
+
+  std::optional<AuthForgeError> failure;
+  try {
+    if (onlineHeartbeat_) {
+      ServerHeartbeat();
+    } else {
+      GracePeriodCheck();
+    }
+    return true;
+  } catch (const AuthForgeError &exc) {
+    failure = exc;
+  } catch (const std::exception &exc) {
+    const std::string message = exc.what();
+    const std::string code = ToLower(Trim(message.substr(0, message.find(':'))));
+    failure.emplace(IsErrorCodeToken(code) ? code : "unknown_error", message);
+  } catch (...) {
+    failure.emplace("unknown_error");
+  }
+
+  // A transient failure can't extend the session past its signed TTL.
+  if (failure->isTransient() && LocalSessionExpired()) {
+    failure.emplace("session_expired");
+  }
+
+  const bool fatal = failure->isFatal();
+  if (fatal) {
+    if (!EndSession(generation)) {
+      return true;
+    }
+  } else {
+    std::lock_guard<std::mutex> guard(lock_);
+    if (sessionGeneration_ != generation) {
+      return true;
+    }
+  }
+  Fail("heartbeat_failed", &*failure);
+  return !fatal;
 }
 
 void AuthForgeClient::ServerHeartbeat() {
   std::string sessionToken;
   std::string hwid;
+  std::uint64_t generation = 0;
   {
     std::lock_guard<std::mutex> guard(lock_);
     sessionToken = sessionToken_;
     hwid = hwid_;
+    generation = sessionGeneration_;
   }
   if (sessionToken.empty()) {
-    throw std::runtime_error("missing_session_token");
+    throw AuthForgeError("missing_session_token");
   }
 
-  const std::string nonce = GenerateNonceHex32();
+  const std::string nonce = nonce_();
   const std::string body = BuildJsonBody({
       {"appId", appId_},
       {"sessionToken", sessionToken},
@@ -558,7 +669,24 @@ void AuthForgeClient::ServerHeartbeat() {
   });
   std::string usedNonce = nonce;
   const std::string response = PostJson("/auth/heartbeat", body, &usedNonce);
-  ApplySignedResponse(response, usedNonce, std::nullopt, SigningContext::Heartbeat);
+
+  // Only a well-formed failure ({"status":"failed","error":"<code>"}) is an
+  // AuthForge verdict; anything else must not end the session.
+  JsonValue status;
+  ExtractJsonValue(response, "status", status);
+  if (!IsSuccessStatus(status)) {
+    JsonValue error;
+    ExtractJsonValue(response, "error", error);
+    const bool failedStatus = status.exists && status.isString && ToLower(Trim(status.value)) == "failed";
+    const bool hasError = error.exists && error.isString && !Trim(error.value).empty();
+    if (!failedStatus || !hasError) {
+      throw AuthForgeError(
+          "unexpected_response",
+          "unexpected_response: status=" + (status.exists ? status.value : std::string("<missing>")) +
+              " error=" + (error.exists ? error.value : std::string("<missing>")));
+    }
+  }
+  ApplySignedResponse(response, usedNonce, std::nullopt, SigningContext::Heartbeat, true, nullptr, generation);
 }
 
 // Grace period check: no network calls. Re-verifies the signed session that
@@ -576,23 +704,28 @@ void AuthForgeClient::GracePeriodCheck() {
   }
 
   if (rawPayloadB64.empty() || signature.empty()) {
-    throw std::runtime_error("missing_local_verification_state");
+    throw AuthForgeError("missing_local_verification_state");
   }
   VerifySignature(rawPayloadB64, signature);
 
   if (!expiresIn.has_value()) {
-    throw std::runtime_error("missing_session_expiry");
+    throw AuthForgeError("missing_session_expiry");
   }
 
   const long long now = static_cast<long long>(std::time(nullptr));
   if (now < *expiresIn) {
     return;
   }
-  throw std::runtime_error("session_expired");
+  throw AuthForgeError("session_expired");
+}
+
+bool AuthForgeClient::LocalSessionExpired() const {
+  std::lock_guard<std::mutex> guard(lock_);
+  return sessionExpiresIn_.has_value() && static_cast<long long>(std::time(nullptr)) >= *sessionExpiresIn_;
 }
 
 void AuthForgeClient::ValidateAndStore(const std::string &licenseKey) {
-  const std::string nonce = GenerateNonceHex32();
+  const std::string nonce = nonce_();
   std::string body = BuildJsonBody({
       {"appId", appId_},
       {"appSecret", appSecret_},
@@ -617,27 +750,28 @@ void AuthForgeClient::ApplySignedResponse(
     const std::optional<std::string> &licenseKey,
     SigningContext context,
     bool persistToSession,
-    ValidateLicenseResult *validateOnlyOut) {
+    ValidateLicenseResult *validateOnlyOut,
+    std::optional<std::uint64_t> expectedGeneration) {
   JsonValue status;
   ExtractJsonValue(responseJson, "status", status);
   if (!IsSuccessStatus(status)) {
-    throw std::runtime_error(ExtractServerError(responseJson));
+    throw AuthForgeError(ExtractServerError(responseJson));
   }
 
   const std::optional<std::string> rawPayloadOpt = ExtractJsonString(responseJson, "payload");
   if (!rawPayloadOpt.has_value()) {
-    throw std::runtime_error("missing_payload");
+    throw AuthForgeError("missing_payload");
   }
   if (rawPayloadOpt->empty()) {
-    throw std::runtime_error("empty_payload");
+    throw AuthForgeError("empty_payload");
   }
 
   const std::optional<std::string> signatureOpt = ExtractJsonString(responseJson, "signature");
   if (!signatureOpt.has_value()) {
-    throw std::runtime_error("missing_signature");
+    throw AuthForgeError("missing_signature");
   }
   if (signatureOpt->empty()) {
-    throw std::runtime_error("empty_signature");
+    throw AuthForgeError("empty_signature");
   }
 
   const std::string rawPayloadB64 = *rawPayloadOpt;
@@ -647,13 +781,13 @@ void AuthForgeClient::ApplySignedResponse(
   try {
     payloadBytes = DecodeBase64Any(rawPayloadB64);
   } catch (...) {
-    throw std::runtime_error("invalid_payload_json");
+    throw AuthForgeError("invalid_payload_json");
   }
 
   std::string payloadJson(payloadBytes.begin(), payloadBytes.end());
   const std::string payloadTrimmed = Trim(payloadJson);
   if (payloadTrimmed.empty() || payloadTrimmed.front() != '{' || payloadTrimmed.back() != '}') {
-    throw std::runtime_error("payload_not_json_object");
+    throw AuthForgeError("payload_not_json_object");
   }
   payloadJson = payloadTrimmed;
   JsonValue nonceValue;
@@ -664,7 +798,7 @@ void AuthForgeClient::ApplySignedResponse(
   }
   std::string receivedNonce = Trim(nonceValue.value);
   if (receivedNonce != expectedNonce) {
-    throw std::runtime_error("nonce_mismatch");
+    throw AuthForgeError("nonce_mismatch");
   }
 
   (void)context;
@@ -673,7 +807,7 @@ void AuthForgeClient::ApplySignedResponse(
   const std::optional<std::string> sessionTokenOpt = ExtractJsonString(payloadJson, "sessionToken");
   const std::string sessionToken = sessionTokenOpt.has_value() ? Trim(*sessionTokenOpt) : "";
   if (sessionToken.empty()) {
-    throw std::runtime_error("missing_sessionToken");
+    throw AuthForgeError("missing_sessionToken");
   }
 
   std::optional<long long> expiresIn = ExtractExpiresInFromSessionToken(sessionToken);
@@ -681,7 +815,7 @@ void AuthForgeClient::ApplySignedResponse(
     expiresIn = ExtractJsonInt(payloadJson, "expiresIn");
   }
   if (!expiresIn.has_value()) {
-    throw std::runtime_error("missing_expiresIn");
+    throw AuthForgeError("missing_expiresIn");
   }
 
   if (validateOnlyOut != nullptr) {
@@ -735,6 +869,13 @@ void AuthForgeClient::ApplySignedResponse(
 
   {
     std::lock_guard<std::mutex> guard(lock_);
+    if (expectedGeneration.has_value()) {
+      if (*expectedGeneration != sessionGeneration_) {
+        return;
+      }
+    } else {
+      ++sessionGeneration_;
+    }
     if (licenseKey.has_value()) {
       licenseKey_ = *licenseKey;
     }
@@ -762,69 +903,46 @@ void AuthForgeClient::ApplySignedResponse(
 }
 
 std::string AuthForgeClient::PostJson(const std::string &path, const std::string &bodyJson, std::string *usedNonce) const {
-  EnsureCurlInit();
-
   const std::string url = apiBaseUrl_ + path;
-  std::array<int, 2> rateRetryDelays = {2, 5};
   std::string mutableBody = bodyJson;
   std::string currentNonce = ExtractNonceFromBody(mutableBody).value_or("");
   bool networkRetried = false;
-  int rateAttempt = 0;
+  std::size_t rateAttempt = 0;
 
   while (true) {
-    CURL *curl = curl_easy_init();
-    if (curl == nullptr) {
-      throw std::runtime_error("url_error: curl_easy_init_failed");
-    }
-
-    std::string responseBody;
-    struct curl_slist *headers = nullptr;
-    headers = curl_slist_append(headers, "Content-Type: application/json");
-
-    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-    curl_easy_setopt(curl, CURLOPT_POST, 1L);
-    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, mutableBody.c_str());
-    curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, static_cast<long>(mutableBody.size()));
-    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, static_cast<long>(requestTimeout_));
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, CurlWriteCallback);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &responseBody);
-
-    const CURLcode rc = curl_easy_perform(curl);
-    long code = 0;
-    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
-
-    curl_slist_free_all(headers);
-    curl_easy_cleanup(curl);
-
-    if (rc != CURLE_OK) {
+    const HttpResponse response = transport_(url, mutableBody, static_cast<long>(requestTimeout_));
+    if (!response.transportOk) {
       if (!networkRetried) {
         networkRetried = true;
-        std::this_thread::sleep_for(std::chrono::seconds(2));
+        sleep_(std::chrono::seconds(kNetworkRetryDelay));
         continue;
       }
-      throw std::runtime_error(std::string("url_error: ") + curl_easy_strerror(rc));
+      throw AuthForgeError(response.timedOut ? "timeout" : "network_error", "url_error: " + response.transportError);
     }
 
-    const std::string trimmed = Trim(responseBody);
-    if (trimmed.empty()) {
-      throw std::runtime_error("invalid_json_response");
-    }
-    if (trimmed.front() != '{' || trimmed.back() != '}') {
-      throw std::runtime_error("response_not_json_object");
+    // JSON bodies are returned for any HTTP status so callers see the
+    // server's error code; only non-JSON error pages become http_error_N.
+    const std::string trimmed = Trim(response.body);
+    if (trimmed.empty() || trimmed.front() != '{' || trimmed.back() != '}') {
+      if (response.status >= 400) {
+        throw AuthForgeError("http_error_" + std::to_string(response.status));
+      }
+      throw AuthForgeError(trimmed.empty() ? "invalid_json_response" : "response_not_json_object");
     }
 
-    const bool isRateLimited = (code == 429) || (ExtractServerError(trimmed) == "rate_limited");
-    if (isRateLimited && rateAttempt < static_cast<int>(rateRetryDelays.size())) {
-      std::this_thread::sleep_for(std::chrono::seconds(rateRetryDelays[rateAttempt]));
-      currentNonce = GenerateNonceHex32();
+    // no_credits / demo_quota_exceeded / app_burn_cap_reached also use HTTP
+    // 429 but are not worth retrying; only retry a genuine rate limit.
+    JsonValue errorValue;
+    ExtractJsonValue(trimmed, "error", errorValue);
+    const bool hasErrorCode = errorValue.exists && errorValue.isString && !Trim(errorValue.value).empty();
+    const bool isRateLimited =
+        ExtractServerError(trimmed) == "rate_limited" || (response.status == 429 && !hasErrorCode);
+    if (isRateLimited && rateAttempt < kRateLimitRetryDelays.size()) {
+      sleep_(std::chrono::seconds(kRateLimitRetryDelays[rateAttempt]));
+      currentNonce = nonce_();
       mutableBody = RefreshNonceInBody(mutableBody, currentNonce);
       ++rateAttempt;
       continue;
-    }
-
-    if (code >= 400) {
-      throw std::runtime_error("http_error_" + std::to_string(code) + ": " + trimmed);
     }
 
     if (usedNonce != nullptr) {
@@ -834,11 +952,57 @@ std::string AuthForgeClient::PostJson(const std::string &path, const std::string
   }
 }
 
+AuthForgeClient::HttpResponse AuthForgeClient::CurlPost(const std::string &url, const std::string &body, long timeoutSeconds) {
+  HttpResponse response;
+  if (!EnsureCurlInit()) {
+    response.transportError = "curl_global_init_failed";
+    return response;
+  }
+  CURL *curl = curl_easy_init();
+  if (curl == nullptr) {
+    response.transportError = "curl_easy_init_failed";
+    return response;
+  }
+
+  std::string responseBody;
+  struct curl_slist *headers = nullptr;
+  headers = curl_slist_append(headers, "Content-Type: application/json");
+
+  curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+  curl_easy_setopt(curl, CURLOPT_POST, 1L);
+  curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.c_str());
+  curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, static_cast<long>(body.size()));
+  curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+  curl_easy_setopt(curl, CURLOPT_TIMEOUT, timeoutSeconds);
+  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, CurlWriteCallback);
+  curl_easy_setopt(curl, CURLOPT_WRITEDATA, &responseBody);
+
+  const CURLcode rc = curl_easy_perform(curl);
+  long code = 0;
+  curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
+
+  curl_slist_free_all(headers);
+  curl_easy_cleanup(curl);
+
+  if (rc != CURLE_OK) {
+    response.timedOut = rc == CURLE_OPERATION_TIMEDOUT;
+    response.transportError = curl_easy_strerror(rc);
+    return response;
+  }
+  response.transportOk = true;
+  response.status = code;
+  response.body = std::move(responseBody);
+  return response;
+}
+
 std::string AuthForgeClient::ExtractServerError(const std::string &responseJson) const {
   JsonValue errorValue;
   if (ExtractJsonValue(responseJson, "error", errorValue) && errorValue.exists) {
     const std::string candidate = ToLower(Trim(errorValue.value));
     if (knownServerErrors_.find(candidate) != knownServerErrors_.end()) {
+      return candidate;
+    }
+    if (errorValue.isString && IsErrorCodeToken(candidate)) {
       return candidate;
     }
   }
@@ -857,7 +1021,9 @@ std::string AuthForgeClient::ExtractServerError(const std::string &responseJson)
 void AuthForgeClient::Fail(const std::string &reason, const std::exception *exc) const noexcept {
   if (onFailure_) {
     try {
-      onFailure_(reason, exc);
+      // Invoke a copy: the callback may destroy this client.
+      const auto callback = onFailure_;
+      callback(reason, exc);
       return;
     } catch (...) {
     }
@@ -866,22 +1032,36 @@ void AuthForgeClient::Fail(const std::string &reason, const std::exception *exc)
 }
 
 void AuthForgeClient::Logout() {
-  std::lock_guard<std::mutex> guard(lock_);
-  heartbeatStop_ = true;
-  heartbeatStarted_ = false;
-  licenseKey_.clear();
-  sessionToken_.clear();
-  sessionExpiresIn_ = std::nullopt;
-  lastNonce_.clear();
-  rawPayloadB64_.clear();
-  signature_.clear();
-  keyId_.clear();
-  sessionDataJson_.clear();
-  appVariablesJson_.clear();
-  licenseVariablesJson_.clear();
-  authenticated_ = false;
-  sessionKind_ = SessionKind::None;
-  offlineLicense_.reset();
+  EndSession(std::nullopt);
+}
+
+bool AuthForgeClient::EndSession(std::optional<std::uint64_t> expectedGeneration) {
+  {
+    std::lock_guard<std::mutex> guard(lock_);
+    if (expectedGeneration.has_value() && *expectedGeneration != sessionGeneration_) {
+      return false;
+    }
+    ++sessionGeneration_;
+    if (heartbeatControl_) {
+      heartbeatControl_->stop = true;
+    }
+    heartbeatStarted_ = false;
+    licenseKey_.clear();
+    sessionToken_.clear();
+    sessionExpiresIn_ = std::nullopt;
+    lastNonce_.clear();
+    rawPayloadB64_.clear();
+    signature_.clear();
+    keyId_.clear();
+    sessionDataJson_.clear();
+    appVariablesJson_.clear();
+    licenseVariablesJson_.clear();
+    authenticated_ = false;
+    sessionKind_ = SessionKind::None;
+    offlineLicense_.reset();
+  }
+  heartbeatCv_.notify_all();
+  return true;
 }
 
 bool AuthForgeClient::IsAuthenticated() const {
@@ -1516,7 +1696,7 @@ void AuthForgeClient::VerifySignature(
     const std::string &signature) const {
   const std::vector<unsigned char> signatureBytes = DecodeBase64Any(signature);
   if (signatureBytes.size() != crypto_sign_BYTES) {
-    throw std::runtime_error("signature_mismatch");
+    throw AuthForgeError("signature_mismatch");
   }
   // Walk the trust list and accept on first match. This is what gives us a
   // hitless rotation window: while the server has a new key in production,
@@ -1531,7 +1711,7 @@ void AuthForgeClient::VerifySignature(
       return;
     }
   }
-  throw std::runtime_error("signature_mismatch");
+  throw AuthForgeError("signature_mismatch");
 }
 
 } // namespace authforge

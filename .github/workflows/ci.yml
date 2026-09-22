@@ -50,5 +50,5 @@ jobs:
           fi
       - name: Build
         run: cmake --build build --config Release
-      - name: Offline license file conformance (ctest)
+      - name: Offline license file and heartbeat tests (ctest)
         run: ctest --test-dir build -C Release --output-on-failure
