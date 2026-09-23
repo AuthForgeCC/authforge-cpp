@@ -236,7 +236,7 @@ The old string-mode constructors still work and behave exactly as before, but th
 
 ## Failure Handling
 
-If authentication fails, the SDK calls your `onFailure` callback if one is provided. If no callback is set, **the SDK calls `std::exit(1)` to terminate the process.** This is intentional: it prevents your app from running without a valid license.
+If authentication fails, the SDK calls your `onFailure` callback if one is provided. Without a callback, a transient background check failure (network outage, `rate_limited`, `system_error`, ...) writes a one-line warning to `std::cerr` (`AuthForge: background check failed (<code>); retrying next interval`) and check-ins continue; every other failure (a rejected `Login`, a definitive check-in answer, including the `session_expired` a transient failure becomes once the session TTL has passed, or the grace period running out) **calls `std::exit(1)` to terminate the process**, so your app cannot keep running without a valid license. `std::exit` does not unwind the stack, so set `onFailure` if your app has anything to save.
 
 **`ValidateLicense()`** always returns a `ValidateLicenseResult` and does not invoke `onFailure` or exit the process.
 
@@ -257,7 +257,11 @@ Request retries are automatic inside the internal HTTP layer:
 - `no_credits`, `demo_quota_exceeded` and `app_burn_cap_reached` also use HTTP 429 but are not retried; the next check-in happens at the next interval
 - network failure: retry once after 2s, then fail with `network_error` or `timeout` (`what()` starts with `url_error: `)
 
+To tolerate short outages but shut down on a definitive answer, have the callback signal your main thread and let the main thread save and exit:
+
 ```cpp
+std::atomic<bool> licenseLost{false}; // must outlive the client
+
 authforge::AuthForgeClient client(
     "YOUR_APP_ID",
     "YOUR_APP_SECRET",
@@ -265,17 +269,32 @@ authforge::AuthForgeClient client(
     authforge::OnlineHeartbeat::On,
     900,
     authforge::AuthForgeClient::kDefaultApiBaseUrl,
-    [](const std::string& reason, const std::exception* exc) {
+    [&licenseLost](const std::string& reason, const std::exception* exc) {
         if (auto* e = dynamic_cast<const authforge::AuthForgeError*>(exc); e && e->isTransient()) {
             std::cerr << "AuthForge " << reason << " (transient): " << e->code() << std::endl;
             return; // session kept; check-ins continue (Login() still returns false)
         }
         std::cerr << "Auth failed: " << reason << std::endl;
         if (exc) std::cerr << "Details: " << exc->what() << std::endl;
-        std::exit(1);
+        // This can run on the heartbeat thread: signal the main thread instead of exiting here.
+        licenseLost = true;
     }
 );
+
+if (!client.Login(licenseKey)) {
+    return 1;
+}
+
+while (!licenseLost) {
+    DoOneUnitOfWork(); // keep units short so the loop notices the signal quickly
+}
+
+SaveUserWork();
+client.Logout();
+return 1;
 ```
+
+In a GUI app, post a message to the UI thread instead (for example `PostMessage` on Windows or `QMetaObject::invokeMethod` in Qt) and close the main window normally. Calling `std::exit(1)` inside `onFailure` is a last resort: it skips the destructors of objects on every thread's stack, so save the user's work first.
 
 **Thread safety.** Background `onFailure` calls run on the heartbeat thread with no SDK lock held. Calling `Logout()`, `IsAuthenticated()` or `Login()` from the callback, or destroying the client inside it, is safe. `Logout()` stops check-ins without blocking; the destructor stops the heartbeat thread and joins it (waiting for an in-flight check-in, if any).
 

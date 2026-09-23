@@ -211,6 +211,10 @@ public:
   /// /auth/validate (how long the app keeps running on the signed session
   /// without contacting AuthForge). 0 means the server default (24h today);
   /// the server clamps requested values to 1h..7d.
+  ///
+  /// Without onFailure, a transient background check failure writes a
+  /// one-line warning to stderr and check-ins continue; any other failure
+  /// calls std::exit(1).
   AuthForgeClient(
       std::string appId,
       std::string appSecret,
@@ -436,6 +440,7 @@ private:
   std::function<HttpResponse(const std::string &url, const std::string &body, long timeoutSeconds)> transport_;
   std::function<void(std::chrono::seconds)> sleep_;
   std::function<std::string()> nonce_;
+  std::function<void(int)> exit_;
 
   mutable std::mutex lock_;
   bool heartbeatStarted_;

@@ -44,6 +44,8 @@ struct HeartbeatTestAccess {
     client.nonce_ = [nonce]() { return nonce; };
   }
   static void SetInterval(AuthForgeClient &client, int seconds) { client.heartbeatInterval_ = seconds; }
+  static void ClearOnFailure(AuthForgeClient &client) { client.onFailure_ = nullptr; }
+  static void SetExit(AuthForgeClient &client, std::function<void(int)> exit) { client.exit_ = std::move(exit); }
   static void SeedSession(AuthForgeClient &client,
                           const std::string &sessionToken,
                           long long expiresIn,
@@ -470,6 +472,47 @@ int main(int argc, char **argv) {
     Check(!Access::Tick(*h.client), "grace period tampered signature: tick returns false");
     const auto records = h.recorder->Records();
     Check(records.size() == 1 && records[0].code == "signature_mismatch", "grace period: signature_mismatch");
+  }
+
+  // 10b. Without onFailure: a transient failure warns on stderr and keeps
+  // checking in; a definitive one (including TTL promotion) still exits.
+  {
+    struct NoCallbackCase {
+      std::string label;
+      Response reply;
+      long long expiresIn;
+      bool fatal;
+    };
+    const std::string warning = "AuthForge: background check failed (system_error); retrying next interval\n";
+    const std::vector<NoCallbackCase> cases = {
+        {"no callback transient", Failed(503, "system_error"), Now() + 3600, false},
+        {"no callback revoked", Failed(403, "revoked"), Now() + 3600, true},
+        {"no callback ttl promotion", Failed(503, "system_error"), Now() - 5, true},
+    };
+    for (const auto &c : cases) {
+      Harness h;
+      Access::ClearOnFailure(*h.client);
+      auto exits = std::make_shared<std::vector<int>>();
+      Access::SetExit(*h.client, [exits](int code) { exits->push_back(code); });
+      h.Script({c.reply});
+      h.Seed(c.expiresIn);
+      std::ostringstream captured;
+      std::streambuf *previous = std::cerr.rdbuf(captured.rdbuf());
+      const bool keepRunning = Access::Tick(*h.client);
+      std::cerr.rdbuf(previous);
+      Check(keepRunning == !c.fatal, c.label + ": tick returns " + (c.fatal ? "false" : "true"));
+      Check(*exits == (c.fatal ? std::vector<int>{1} : std::vector<int>{}), c.label + ": exit(1) only when fatal");
+      Check(captured.str() == (c.fatal ? std::string() : warning), c.label + ": stderr (got \"" + captured.str() + "\")");
+      Check(h.client->IsAuthenticated() == !c.fatal, c.label + ": IsAuthenticated " + (c.fatal ? "false" : "true"));
+    }
+
+    Harness h;
+    Access::ClearOnFailure(*h.client);
+    auto exits = std::make_shared<std::vector<int>>();
+    Access::SetExit(*h.client, [exits](int code) { exits->push_back(code); });
+    h.Script({Failed(401, "invalid_key")});
+    Check(!h.client->Login("KEY-0000"), "no callback login: returns false");
+    Check(*exits == std::vector<int>{1}, "no callback login: exit(1)");
   }
 
   // 11. Login and ValidateLicense get clean codes for non-2xx JSON bodies.

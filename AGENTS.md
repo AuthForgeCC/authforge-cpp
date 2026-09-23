@@ -17,11 +17,16 @@ Add `authforge_sdk.h` and `authforge_sdk.cpp` to your project, or consume the li
 
 ```cpp
 #include "authforge_sdk.h"
-#include <cstdlib>
+#include <atomic>
+#include <chrono>
 #include <iostream>
 #include <string>
+#include <thread>
 
 int main() {
+  // Set when the license is lost; the main loop checks it, saves work, then exits.
+  std::atomic<bool> licenseLost{false};
+
   // Default policy: activate online once, then run through the grace period
   // (no network until the session TTL expires). To enable online check-ins,
   // pass authforge::OnlineHeartbeat::On as the 4th argument.
@@ -32,10 +37,13 @@ int main() {
       authforge::OnlineHeartbeat::Off,
       900,
       authforge::AuthForgeClient::kDefaultApiBaseUrl,
-      [](const std::string &reason, const std::exception *exc) {
+      [&licenseLost](const std::string &reason, const std::exception *exc) {
+        if (auto *e = dynamic_cast<const authforge::AuthForgeError *>(exc); e && e->isTransient()) {
+          return; // network blip / rate_limited: the SDK checks in again next interval
+        }
         std::cerr << "AuthForge: " << reason << "\n";
         if (exc) std::cerr << exc->what() << "\n";
-        std::exit(1);
+        licenseLost = true; // may run on the heartbeat thread: signal, do not std::exit here
       });
 
   std::string license_key;
@@ -49,10 +57,14 @@ int main() {
 
   // --- Your application code starts here ---
   std::cout << "Running with a valid license.\n";
+  while (!licenseLost) {
+    std::this_thread::sleep_for(std::chrono::seconds(1)); // replace with short units of work
+  }
   // --- Your application code ends here ---
 
+  // Save the user's work here, then stop.
   client.Logout();
-  return 0;
+  return 1;
 }
 ```
 
@@ -66,7 +78,7 @@ int main() {
 | `onlineHeartbeat` | `authforge::OnlineHeartbeat` | no | `OnlineHeartbeat::Off` | `Off` (default): after activation, run through the grace period on the signed session with no network calls. `On`: enable online check-ins via `/auth/heartbeat` for fast revocation and concurrent-use detection |
 | `heartbeatInterval` | `int` | no | `900` | Seconds between background checks (minimum `10`). With online check-ins enabled, revocations apply on the next check-in |
 | `apiBaseUrl` | `std::string` | no | `kDefaultApiBaseUrl` (`https://auth.authforge.cc`) | API base URL |
-| `onFailure` | `std::function<void(const std::string&, const std::exception*)>` | no | `nullptr` | Failure callback for `Login` / background checks; if null, `std::exit(1)` (not used by `ValidateLicense`) |
+| `onFailure` | `std::function<void(const std::string&, const std::exception*)>` | no | `nullptr` | Failure callback for `Login` / background checks (not used by `ValidateLicense`). If null, a transient background check failure prints a one-line warning to `std::cerr` and check-ins continue; any other failure calls `std::exit(1)` |
 | `requestTimeout` | `int` | no | `15` | HTTP timeout (seconds) |
 | `ttlSeconds` | `int` | no | `0` (server default: 86400) | Requested grace period duration in seconds (the session token lifetime). `0` means "server default" (24h). Server clamps to `[3600, 604800]` (1h to 7d); preserved across heartbeat refreshes. |
 | `hwidOverride` | `std::string` | no | `""` | Optional custom HWID/subject string. When non-empty (for example `tg:123456789`), the SDK sends it instead of generating a machine fingerprint. |
@@ -172,12 +184,14 @@ Offline file error codes (in check order): `bad_armor`, `bad_signature`, `unsupp
 - Only `rate_limited` (or a 429 with no error code) is retried (2s, then 5s). `no_credits`, `demo_quota_exceeded` and `app_burn_cap_reached` are not retried.
 
 ```cpp
-[](const std::string &reason, const std::exception *exc) {
+[&licenseLost](const std::string &reason, const std::exception *exc) {
   if (auto* e = dynamic_cast<const authforge::AuthForgeError*>(exc); e && e->isTransient()) return;
   std::cerr << "AuthForge: " << reason << (exc ? std::string(": ") + exc->what() : "") << "\n";
-  std::exit(1);
+  licenseLost = true; // std::atomic<bool> the main loop checks before saving and returning
 }
 ```
+
+`std::exit(1)` inside `onFailure` is a last resort: it skips stack destructors on every thread, so save the user's work first.
 
 Thread safety: background `onFailure` calls run on the heartbeat thread with no SDK lock held. Calling `Logout()` / `IsAuthenticated()` from the callback, or destroying the client inside it, is safe. The destructor stops and joins the heartbeat thread.
 
@@ -185,7 +199,8 @@ Thread safety: background `onFailure` calls run on the heartbeat thread with no 
 
 - Do not hardcode the app secret as a plain string literal in source; use environment variables or encrypted config
 - Do not embed the App Secret in air-gapped / `LoginFromFile()` builds; pass `""`; verification only needs app id + public key
-- Do not omit `onFailure`; without it, failures call `std::exit(1)` without your cleanup
+- Do not omit `onFailure`; without it, transient check-in failures only print a stderr warning, but definitive ones (and a failed `Login`) call `std::exit(1)` without your cleanup
+- Do not call `std::exit` from `onFailure` as the normal shutdown path; set a `std::atomic<bool>` (or post to the UI thread) so the main thread can save work and exit cleanly
 - Do not call `Login` on every app action; call once at startup, the background checks handle the rest
 - Do not pass the deprecated `heartbeatMode` strings (`"LOCAL"` / `"SERVER"`) in new code; use the default for grace period behavior or `authforge::OnlineHeartbeat::On` for online check-ins
 - Do not enable online check-ins if the app loses internet access after initial activation; the default grace period behavior covers that case within the session TTL

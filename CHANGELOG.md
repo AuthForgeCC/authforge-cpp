@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.4.1
+
+### Fixes
+
+- **No more exit on transient failures without a callback.** Without `onFailure`, a transient background check failure (network outage, timeout, `rate_limited`, `system_error`, `no_credits`, ...) no longer calls `std::exit(1)`. The SDK writes one line to `std::cerr`, `AuthForge: background check failed (<code>); retrying next interval`, keeps the session and checks in again on the next interval. Previously a brief outage killed any app that enabled online check-ins without setting a callback.
+- Unchanged: without a callback, definitive failures (including the `session_expired` a transient failure becomes once the session TTL has passed) and failed `Login` calls still call `std::exit(1)`.
+
+### Docs
+
+- The README and `AGENTS.md` examples no longer call `std::exit(1)` from `onFailure`. They set a `std::atomic<bool>` that the main loop checks, so it can save work and return from `main`; `std::exit` is kept as a last resort after saving.
+
 ## 1.4.0
 
 ### Behavior changes for callers

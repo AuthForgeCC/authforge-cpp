@@ -9,6 +9,7 @@
 #include <cstring>
 #include <ctime>
 #include <iomanip>
+#include <iostream>
 #include <sstream>
 #include <stdexcept>
 #include <thread>
@@ -332,6 +333,7 @@ AuthForgeClient::AuthForgeClient(
       transport_(CurlPost),
       sleep_([](std::chrono::seconds delay) { std::this_thread::sleep_for(delay); }),
       nonce_(GenerateNonceHex32),
+      exit_([](int code) { std::exit(code); }),
       heartbeatStarted_(false) {
   if (appId_.empty()) {
     throw std::invalid_argument("app_id must be a non-empty string");
@@ -641,6 +643,10 @@ bool AuthForgeClient::HeartbeatTick() {
     if (sessionGeneration_ != generation) {
       return true;
     }
+  }
+  if (!fatal && !onFailure_) {
+    std::cerr << "AuthForge: background check failed (" << failure->code() << "); retrying next interval\n";
+    return true;
   }
   Fail("heartbeat_failed", &*failure);
   return !fatal;
@@ -1028,7 +1034,7 @@ void AuthForgeClient::Fail(const std::string &reason, const std::exception *exc)
     } catch (...) {
     }
   }
-  std::exit(1);
+  exit_(1);
 }
 
 void AuthForgeClient::Logout() {
